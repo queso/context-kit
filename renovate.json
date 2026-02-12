@@ -3,7 +3,7 @@
   "extends": ["config:recommended", ":disableDependencyDashboard"],
   "labels": ["dependencies"],
   "platformAutomerge": true,
-  "schedule": ["before 8am on Monday"],
+  "schedule": ["before 8am every weekday"],
   "timezone": "America/New_York",
   "prHourlyLimit": 4,
   "prConcurrentLimit": 5,
