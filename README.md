@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# context-kit
 
-## Getting Started
+An opinionated Next.js starter built for AI-assisted development.
 
-First, run the development server:
+This is not another SaaS boilerplate with auth screens and pricing pages you'll rip out in an hour. It's a foundation. Clean architecture, modern tooling, and -- the part that actually matters -- an intent layer baked in so AI coding tools understand your project from the first commit.
+
+The idea is simple: AI tools like Claude Code work dramatically better when they have durable context about your project instead of you re-explaining everything in disposable chat. CLAUDE.md and AGENTS.md files give that context a permanent home in your repo.
+
+## The Stack
+
+| Layer | Choice | Why |
+|-------|--------|-----|
+| Framework | **Next.js 16** (App Router) | The default choice for production React. App Router is the future, no reason to start with Pages. |
+| Runtime | **Node 22** via [fnm](https://github.com/Schniz/fnm) | Fast, cross-platform, reads `.node-version` automatically. Drop-in nvm replacement. |
+| Package Manager | **pnpm** via [corepack](https://nodejs.org/api/corepack.html) | Fast, disk-efficient, strict by default. Version pinned in `package.json`. |
+| Language | **TypeScript** (strict mode) | Strict mode catches real bugs. If you're going to use TypeScript, actually use it. |
+| UI | **React 19** | Server Components, Actions, and the new hooks are too useful to leave on the table. |
+| Styling | **Tailwind CSS v4** | Fastest way to style components without context-switching to CSS files. v4 is leaner and faster. |
+| Components | **shadcn/ui** | Copy-paste components you own. No dependency lock-in, full control, looks good out of the box. |
+| Code Quality | **Biome** | Replaces ESLint + Prettier with a single tool. Faster, less config, fewer dependency headaches. |
+| Testing | **Vitest + React Testing Library** | Fast, native ESM support, compatible API. No reason to use Jest anymore. |
+| Database | **Prisma ORM** | Great DX, type-safe queries, works with any SQL database. Swap Postgres for SQLite in dev, nobody cares. |
+| Local Dev | **Docker Compose** | Postgres and any other services via OrbStack or Docker Desktop. One command, no local installs. |
+| CI | **GitHub Actions** | Lint, type-check, and test on every PR. Ships as a workflow file, ready to go. |
+| Dependency Updates | **Dependabot + Renovate** | Dependabot for Actions versions, Renovate for npm with auto-merge. Patch/minor ship automatically when CI passes. |
+| AI Context | **CLAUDE.md + AGENTS.md** | The whole point. Project-level and directory-level context for AI coding tools. |
+
+## Quick Start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/queso/context-kit.git my-app
+cd my-app
+cp .env.example .env
+docker compose up -d        # starts Postgres + Next.js (OrbStack or Docker Desktop)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). That's it. The app and database both run in containers with your code volume-mounted, so changes hot reload instantly.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## AI-Native Development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Most people use AI coding tools by pasting context into chat over and over. That works, but it's slow and it doesn't scale.
 
-## Learn More
+This template ships with two files that change the workflow:
 
-To learn more about Next.js, take a look at the following resources:
+**CLAUDE.md** sits at the project root. It tells Claude Code (and other AI tools that read it) what the project is, what conventions you follow, how to run things, and what to watch out for. Think of it as onboarding docs for your AI pair programmer.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**AGENTS.md** files live in subdirectories. Each one gives domain-specific context for that part of the codebase. Your `app/` directory might explain routing conventions. Your `lib/` directory might document shared utilities and patterns. The AI reads the nearest AGENTS.md before making changes, so it respects local conventions without you having to repeat yourself.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This is the intent layer pattern. Durable context beats disposable chat every time.
 
-## Deploy on Vercel
+## What's NOT Included
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This needs to be said clearly because every starter template eventually becomes a SaaS kit:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **No auth.** Pick your own. NextAuth, Clerk, Lucia, roll your own. Not my call.
+- **No example pages.** You get a clean `app/` directory, not a demo app to delete.
+- **No business logic.** No API routes doing things you don't need.
+- **No SaaS features.** No billing, no teams, no onboarding flows.
+- **No opinions on deployment.** Vercel, Docker, whatever. Your call.
+
+This is a foundation. Build your thing on top of it.
+
+## License
+
+MIT. Do whatever you want with it.
+
+---
+
+Built by [Josh Owens](https://joshowens.dev). I do AI-augmented engineering consulting -- helping teams ship faster with AI tools baked into their workflow.
