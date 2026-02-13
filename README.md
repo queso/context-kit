@@ -48,6 +48,22 @@ This template ships with two files that change the workflow:
 
 This is the intent layer pattern. Durable context beats disposable chat every time.
 
+## Built-in Foundation
+
+These features ship out of the box so you start with production-grade defaults instead of bolting them on later:
+
+**Environment Validation** -- `lib/env.ts` validates `DATABASE_URL`, `LOG_LEVEL`, and `SITE_URL` at startup using Zod. Missing or invalid variables throw clear error messages immediately instead of failing at runtime.
+
+**Structured Logging** -- `lib/logger.ts` provides a pino-based logging factory. Pretty-printed in development, JSON in production. Import `logger` from `@/lib/logger` or call `createLogger()` for custom instances. Control verbosity with the `LOG_LEVEL` env var.
+
+**Security Headers** -- Every response includes Content-Security-Policy, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and Permissions-Policy. Configured in `next.config.ts` via `lib/security-headers.ts`.
+
+**SEO Baseline** -- Dynamic `sitemap.xml`, `robots.txt`, Open Graph metadata, and a title template are wired up in the root layout. Set `SITE_URL` in your environment and everything points to the right place.
+
+**Error Boundaries** -- Custom error page (`app/error.tsx`), 404 page (`app/not-found.tsx`), and loading spinner (`app/loading.tsx`) styled with Tailwind and dark mode support.
+
+**Health Check** -- `GET /api/health` returns database connectivity, latency, and a timestamp. Useful for container orchestrators, uptime monitors, and deployment checks.
+
 ## What's NOT Included
 
 This needs to be said clearly because every starter template eventually becomes a SaaS kit:

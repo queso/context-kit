@@ -12,9 +12,22 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 })
 
+const siteUrl = process.env.SITE_URL || "http://localhost:3000"
+const description = "An opinionated Next.js starter built for AI-assisted development."
+
 export const metadata: Metadata = {
-  title: "context-kit",
-  description: "An opinionated Next.js starter built for AI-assisted development.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "context-kit",
+    template: "%s | context-kit",
+  },
+  description,
+  openGraph: {
+    title: "context-kit",
+    description,
+    type: "website",
+    url: siteUrl,
+  },
 }
 
 export default function RootLayout({
