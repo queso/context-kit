@@ -31,7 +31,7 @@ docker compose up -d        # starts Postgres + Next.js
 
 Open [http://localhost:3000](http://localhost:3000). You're up.
 
-**Without Docker:** Run Postgres yourself, then `pnpm install && pnpm dev`.
+**Without Docker:** Run Postgres yourself, then `pnpm install && pnpm db:generate && pnpm dev`. The `db:generate` step creates the Prisma client in `lib/generated/` -- Docker handles this automatically, but local dev needs it before the first run.
 
 **Next steps after setup:**
 
