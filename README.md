@@ -6,6 +6,41 @@ This is not another SaaS boilerplate with auth screens and pricing pages you'll 
 
 The idea is simple: AI tools like Claude Code work dramatically better when they have durable context about your project instead of you re-explaining everything in disposable chat. CLAUDE.md and AGENTS.md files give that context a permanent home in your repo.
 
+## Start a New Project
+
+```bash
+# 1. Clone and detach from context-kit history
+git clone https://github.com/queso/context-kit.git my-app
+cd my-app
+rm -rf .git
+git init
+
+# 2. Make it yours
+#    - Update "name" in package.json
+#    - Update the title in CLAUDE.md and app/layout.tsx
+#    - Replace "context-kit" references with your project name
+
+# 3. Set up environment
+cp .env.example .env
+#    - Fill in DATABASE_URL (or keep the default for local Docker)
+#    - Set SITE_URL to your production domain when ready
+
+# 4. Start developing
+docker compose up -d        # starts Postgres + Next.js
+```
+
+Open [http://localhost:3000](http://localhost:3000). You're up.
+
+**Without Docker:** Run Postgres yourself, then `pnpm install && pnpm db:generate && pnpm dev`. The `db:generate` step creates the Prisma client in `lib/generated/` -- Docker handles this automatically, but local dev needs it before the first run.
+
+**Next steps after setup:**
+
+1. Edit `prisma/schema.prisma` to define your domain models
+2. Run `pnpm db:push` to sync the schema to your database
+3. Update `CLAUDE.md` to describe your project -- this is what AI tools read first
+4. Add `AGENTS.md` files in subdirectories as your codebase grows
+5. Start building. The foundation handles env validation, logging, security headers, SEO, error pages, and health checks out of the box.
+
 ## The Stack
 
 | Layer | Choice | Why |
@@ -25,17 +60,6 @@ The idea is simple: AI tools like Claude Code work dramatically better when they
 | Dependency Updates | **Dependabot + Renovate** | Dependabot for Actions versions, Renovate for npm with auto-merge. Patch/minor ship automatically when CI passes. |
 | AI Context | **CLAUDE.md + AGENTS.md** | The whole point. Project-level and directory-level context for AI coding tools. |
 
-## Quick Start
-
-```bash
-git clone https://github.com/queso/context-kit.git my-app
-cd my-app
-cp .env.example .env
-docker compose up -d        # starts Postgres + Next.js (OrbStack or Docker Desktop)
-```
-
-Open [http://localhost:3000](http://localhost:3000). That's it. The app and database both run in containers with your code volume-mounted, so changes hot reload instantly.
-
 ## AI-Native Development
 
 Most people use AI coding tools by pasting context into chat over and over. That works, but it's slow and it doesn't scale.
@@ -47,6 +71,22 @@ This template ships with two files that change the workflow:
 **AGENTS.md** files live in subdirectories. Each one gives domain-specific context for that part of the codebase. Your `app/` directory might explain routing conventions. Your `lib/` directory might document shared utilities and patterns. The AI reads the nearest AGENTS.md before making changes, so it respects local conventions without you having to repeat yourself.
 
 This is the intent layer pattern. Durable context beats disposable chat every time.
+
+## Built-in Foundation
+
+These features ship out of the box so you start with production-grade defaults instead of bolting them on later:
+
+**Environment Validation** -- `lib/env.ts` validates `DATABASE_URL`, `LOG_LEVEL`, and `SITE_URL` at startup using Zod. Missing or invalid variables throw clear error messages immediately instead of failing at runtime.
+
+**Structured Logging** -- `lib/logger.ts` provides a pino-based logging factory. Pretty-printed in development, JSON in production. Import `logger` from `@/lib/logger` or call `createLogger()` for custom instances. Control verbosity with the `LOG_LEVEL` env var.
+
+**Security Headers** -- Every response includes Content-Security-Policy, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and Permissions-Policy. Configured in `next.config.ts` via `lib/security-headers.ts`.
+
+**SEO Baseline** -- Dynamic `sitemap.xml`, `robots.txt`, Open Graph metadata, and a title template are wired up in the root layout. Set `SITE_URL` in your environment and everything points to the right place.
+
+**Error Boundaries** -- Custom error page (`app/error.tsx`), 404 page (`app/not-found.tsx`), and loading spinner (`app/loading.tsx`) styled with Tailwind and dark mode support.
+
+**Health Check** -- `GET /api/health` returns database connectivity, latency, and a timestamp. Useful for container orchestrators, uptime monitors, and deployment checks.
 
 ## What's NOT Included
 
