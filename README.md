@@ -6,6 +6,41 @@ This is not another SaaS boilerplate with auth screens and pricing pages you'll 
 
 The idea is simple: AI tools like Claude Code work dramatically better when they have durable context about your project instead of you re-explaining everything in disposable chat. CLAUDE.md and AGENTS.md files give that context a permanent home in your repo.
 
+## Start a New Project
+
+```bash
+# 1. Clone and detach from context-kit history
+git clone https://github.com/queso/context-kit.git my-app
+cd my-app
+rm -rf .git
+git init
+
+# 2. Make it yours
+#    - Update "name" in package.json
+#    - Update the title in CLAUDE.md and app/layout.tsx
+#    - Replace "context-kit" references with your project name
+
+# 3. Set up environment
+cp .env.example .env
+#    - Fill in DATABASE_URL (or keep the default for local Docker)
+#    - Set SITE_URL to your production domain when ready
+
+# 4. Start developing
+docker compose up -d        # starts Postgres + Next.js
+```
+
+Open [http://localhost:3000](http://localhost:3000). You're up.
+
+**Without Docker:** Run Postgres yourself, then `pnpm install && pnpm dev`.
+
+**Next steps after setup:**
+
+1. Edit `prisma/schema.prisma` to define your domain models
+2. Run `pnpm db:push` to sync the schema to your database
+3. Update `CLAUDE.md` to describe your project -- this is what AI tools read first
+4. Add `AGENTS.md` files in subdirectories as your codebase grows
+5. Start building. The foundation handles env validation, logging, security headers, SEO, error pages, and health checks out of the box.
+
 ## The Stack
 
 | Layer | Choice | Why |
@@ -24,17 +59,6 @@ The idea is simple: AI tools like Claude Code work dramatically better when they
 | CI | **GitHub Actions** | Lint, type-check, and test on every PR. Ships as a workflow file, ready to go. |
 | Dependency Updates | **Dependabot + Renovate** | Dependabot for Actions versions, Renovate for npm with auto-merge. Patch/minor ship automatically when CI passes. |
 | AI Context | **CLAUDE.md + AGENTS.md** | The whole point. Project-level and directory-level context for AI coding tools. |
-
-## Quick Start
-
-```bash
-git clone https://github.com/queso/context-kit.git my-app
-cd my-app
-cp .env.example .env
-docker compose up -d        # starts Postgres + Next.js (OrbStack or Docker Desktop)
-```
-
-Open [http://localhost:3000](http://localhost:3000). That's it. The app and database both run in containers with your code volume-mounted, so changes hot reload instantly.
 
 ## AI-Native Development
 
