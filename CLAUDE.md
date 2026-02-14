@@ -6,7 +6,7 @@ This is a foundation, not a SaaS boilerplate. There is no auth, no billing, no e
 
 ## Stack
 
-Next.js 16 with App Router, React 19, TypeScript in strict mode, Tailwind CSS v4, shadcn/ui (New York style, lucide icons), Biome for linting and formatting, Vitest with React Testing Library for tests, Prisma ORM with PostgreSQL, pnpm for package management, Docker Compose for local dev, GitHub Actions for CI.
+Next.js 16 with App Router, React 19, TypeScript in strict mode, Tailwind CSS v4, shadcn/ui (New York style, lucide icons), Biome for linting and formatting, Vitest with React Testing Library for tests, Prisma ORM with PostgreSQL, SWR for client-side data fetching, reactiveSWR for real-time SSE, pnpm for package management, Docker Compose for local dev, GitHub Actions for CI.
 
 Node 22 (see `.node-version`). Use fnm to manage versions. pnpm is the package manager (corepack-managed, version pinned in `package.json`).
 
@@ -78,6 +78,7 @@ app/                        Next.js App Router pages and layouts
   loading.tsx               Global loading spinner
   sitemap.ts                Dynamic sitemap.xml generation
   robots.ts                 Dynamic robots.txt generation
+  providers.tsx             Client providers (SWR + optional SSE)
   layout.tsx                Root layout with SEO metadata
   page.tsx                  Home page
   globals.css               Tailwind v4 + shadcn/ui theme variables
@@ -87,10 +88,14 @@ lib/                        Shared utilities
   __tests__/                Utility tests (*.test.ts)
   db.ts                     Prisma client singleton
   env.ts                    Zod environment validation (DATABASE_URL, LOG_LEVEL, SITE_URL)
+  fetcher.ts                Typed fetch wrapper for SWR
   logger.ts                 Pino structured logging (createLogger, getLogger, logger)
   security-headers.ts       Security headers (CSP, HSTS, etc.)
+  sse.ts                    Server-side SSE stream utility (createSSEStream)
   utils.ts                  cn() helper for Tailwind class merging
   generated/                Prisma generated client (gitignored)
+types/
+  reactive-swr.d.ts         Type declarations for reactive-swr (installed from GitHub)
 prisma/
   schema.prisma             Database schema (source of truth)
   migrations/               Migration files (gitignored until committed)
@@ -112,6 +117,75 @@ renovate.json               Renovate config (npm dependency auto-updates)
 - **shadcn/ui components** go in `components/ui/`. Add them with `pnpm dlx shadcn add <component>`.
 - **`cn()` utility** in `lib/utils.ts` for merging Tailwind classes. Use it in component className props.
 - **Test files** are colocated in `__tests__/` directories as `*.test.tsx`. Vitest uses jsdom environment with globals enabled.
+
+## Data Fetching
+
+Two complementary patterns for client-side data:
+
+- **SWR** (`useSWR`) for standard client-side data fetching. Always available via `<Providers>` in the root layout.
+- **reactiveSWR** (`SSEProvider`) for real-time server-sent events. Opt-in per page or layout.
+
+### Client-side fetching with SWR
+
+Use `useSWR` in any client component. The global `fetcher` from `@/lib/fetcher` is pre-configured.
+
+```tsx
+"use client"
+import useSWR from "swr"
+
+export function UserProfile({ id }: { id: string }) {
+  const { data, error, isLoading } = useSWR<User>(`/api/users/${id}`)
+  if (isLoading) return <div>Loading...</div>
+  if (error) return <div>Error loading user</div>
+  return <div>{data.name}</div>
+}
+```
+
+### Real-time SSE with reactiveSWR
+
+1. **Create an SSE API route** using `createSSEStream` from `@/lib/sse`:
+
+```typescript
+import { createSSEStream } from "@/lib/sse"
+
+export async function GET() {
+  const { stream, writer, headers } = createSSEStream()
+  // Send events (e.g., from a database subscription or interval)
+  await writer.send("update", { count: 1 })
+  await writer.close()
+  return new Response(stream, { headers })
+}
+```
+
+2. **Wrap a page or layout** with `SSEProvider` by passing `sseConfig` to `<Providers>`:
+
+```tsx
+"use client"
+import { Providers } from "@/app/providers"
+import type { SSEConfig } from "reactive-swr"
+
+const sseConfig: SSEConfig = {
+  url: "/api/events",
+  events: {
+    update: { key: "/api/data", update: "refetch" },
+  },
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return <Providers sseConfig={sseConfig}>{children}</Providers>
+}
+```
+
+3. **Use hooks** in child components: `useSSEStatus()` for connection state, `useSSEEvent()` for event listeners.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `lib/fetcher.ts` | Typed fetch wrapper -- throws on non-OK responses with `error.status` |
+| `lib/sse.ts` | `createSSEStream()` -- returns `{ stream, writer, headers }` for SSE API routes |
+| `app/providers.tsx` | `<Providers>` -- SWRConfig (always active) + SSEProvider (opt-in via `sseConfig` prop) |
+| `types/reactive-swr.d.ts` | Type declarations for the reactive-swr package |
 
 ## Testing
 
