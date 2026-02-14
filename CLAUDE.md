@@ -26,6 +26,7 @@ This starts Postgres and the Next.js dev server. Code is volume-mounted so chang
 ```bash
 cp .env.example .env
 pnpm install
+pnpm db:generate
 # Start Postgres yourself, then:
 pnpm dev
 ```
@@ -66,24 +67,41 @@ pnpm dev
 ## Directory Structure
 
 ```
-app/              Next.js App Router pages and layouts
-  __tests__/      Colocated test files (*.test.tsx)
-  globals.css     Tailwind v4 + shadcn/ui theme variables
-  layout.tsx      Root layout
-  page.tsx        Home page
-lib/              Shared utilities
-  db.ts           Prisma client singleton
-  utils.ts        cn() helper for Tailwind class merging
-  generated/      Prisma generated client (gitignored)
+app/                        Next.js App Router pages and layouts
+  __tests__/                Page and component tests (*.test.tsx)
+  api/
+    health/
+      __tests__/            Health endpoint tests
+      route.ts              GET /api/health -- DB connectivity check
+  error.tsx                 Global error boundary (client component)
+  not-found.tsx             Custom 404 page
+  loading.tsx               Global loading spinner
+  sitemap.ts                Dynamic sitemap.xml generation
+  robots.ts                 Dynamic robots.txt generation
+  layout.tsx                Root layout with SEO metadata
+  page.tsx                  Home page
+  globals.css               Tailwind v4 + shadcn/ui theme variables
+components/
+  ui/                       shadcn/ui components (add via `pnpm dlx shadcn add`)
+lib/                        Shared utilities
+  __tests__/                Utility tests (*.test.ts)
+  db.ts                     Prisma client singleton
+  env.ts                    Zod environment validation (DATABASE_URL, LOG_LEVEL, SITE_URL)
+  logger.ts                 Pino structured logging (createLogger, getLogger, logger)
+  security-headers.ts       Security headers (CSP, HSTS, etc.)
+  utils.ts                  cn() helper for Tailwind class merging
+  generated/                Prisma generated client (gitignored)
 prisma/
-  schema.prisma   Database schema (source of truth)
-  migrations/     Migration files (gitignored until committed)
-public/           Static assets
+  schema.prisma             Database schema (source of truth)
+  migrations/               Migration files (gitignored until committed)
+docs/                       Project documentation
+prd/                        Product Requirements Documents
+public/                     Static assets
 .github/
-  dependabot.yml  Dependabot config (GitHub Actions updates only)
+  dependabot.yml            Dependabot config (GitHub Actions updates only)
   workflows/
-    ci.yml        GitHub Actions: typecheck, lint, test on PRs
-renovate.json     Renovate config (npm dependency auto-updates)
+    ci.yml                  GitHub Actions: typecheck, lint, test on PRs
+renovate.json               Renovate config (npm dependency auto-updates)
 ```
 
 ## Key Patterns
