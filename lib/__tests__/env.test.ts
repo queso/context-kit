@@ -24,6 +24,16 @@ describe("createEnv", () => {
       const env = createEnv({ ...validEnv, SITE_URL: "https://example.com" })
       expect(env.SITE_URL).toBe("https://example.com")
     })
+
+    it("should return CORS_ORIGIN when explicitly set", () => {
+      const env = createEnv({ ...validEnv, CORS_ORIGIN: "https://app.example.com" })
+      expect(env.CORS_ORIGIN).toBe("https://app.example.com")
+    })
+
+    it("should parse RATE_LIMIT_RPM as a number when set as string", () => {
+      const env = createEnv({ ...validEnv, RATE_LIMIT_RPM: "120" })
+      expect(env.RATE_LIMIT_RPM).toBe(120)
+    })
   })
 
   describe("defaults", () => {
@@ -36,6 +46,16 @@ describe("createEnv", () => {
       const env = createEnv(validEnv)
       expect(env.SITE_URL).toBe("http://localhost:3000")
     })
+
+    it("should default CORS_ORIGIN to empty string when not set", () => {
+      const env = createEnv(validEnv)
+      expect(env.CORS_ORIGIN).toBe("")
+    })
+
+    it("should default RATE_LIMIT_RPM to 60 when not set", () => {
+      const env = createEnv(validEnv)
+      expect(env.RATE_LIMIT_RPM).toBe(60)
+    })
   })
 
   describe("validation errors", () => {
@@ -45,6 +65,12 @@ describe("createEnv", () => {
 
     it("should throw when LOG_LEVEL is an invalid value", () => {
       expect(() => createEnv({ ...validEnv, LOG_LEVEL: "verbose" })).toThrow()
+    })
+
+    it("should throw when RATE_LIMIT_RPM is not a valid positive integer", () => {
+      expect(() => createEnv({ ...validEnv, RATE_LIMIT_RPM: "-10" })).toThrow()
+      expect(() => createEnv({ ...validEnv, RATE_LIMIT_RPM: "0" })).toThrow()
+      expect(() => createEnv({ ...validEnv, RATE_LIMIT_RPM: "abc" })).toThrow()
     })
   })
 })

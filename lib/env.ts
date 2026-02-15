@@ -4,6 +4,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   SITE_URL: z.string().default("http://localhost:3000"),
+  CORS_ORIGIN: z.string().default(""),
+  RATE_LIMIT_RPM: z.coerce.number().int().positive().default(60),
 })
 
 type Env = z.infer<typeof envSchema>

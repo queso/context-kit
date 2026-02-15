@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { createContext, type ReactNode, useContext, useRef } from "react"
 import type { SSEConfig } from "reactive-swr"
 import { SSEProvider } from "reactive-swr"
 import { SWRConfig } from "swr"
@@ -11,17 +11,37 @@ interface ProvidersProps {
   sseConfig?: SSEConfig
 }
 
+const CorrelationIdContext = createContext<string | null>(null)
+
+export function useCorrelationId(): string {
+  const correlationId = useContext(CorrelationIdContext)
+  if (correlationId === null) {
+    throw new Error("useCorrelationId must be used within Providers")
+  }
+  return correlationId
+}
+
 export function Providers({ children, sseConfig }: ProvidersProps) {
+  const correlationIdRef = useRef<string | undefined>(undefined)
+
+  if (!correlationIdRef.current) {
+    correlationIdRef.current = crypto.randomUUID()
+  }
+
+  const correlationId = correlationIdRef.current
+
   const content = (
-    <SWRConfig
-      value={{
-        fetcher,
-        revalidateOnFocus: false,
-        dedupingInterval: 2000,
-      }}
-    >
-      {children}
-    </SWRConfig>
+    <CorrelationIdContext.Provider value={correlationId}>
+      <SWRConfig
+        value={{
+          fetcher: (url: string) => fetcher(url, { "X-Correlation-Id": correlationId }),
+          revalidateOnFocus: false,
+          dedupingInterval: 2000,
+        }}
+      >
+        {children}
+      </SWRConfig>
+    </CorrelationIdContext.Provider>
   )
 
   if (sseConfig) {
