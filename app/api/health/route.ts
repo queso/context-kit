@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { apiError } from "@/lib/api"
 import { prisma } from "@/lib/db"
 import { logger } from "@/lib/logger"
 
@@ -19,15 +19,14 @@ export async function GET() {
     const latency = Date.now() - start
     logger.info({ latency }, "Health check passed")
 
-    return NextResponse.json({ status: "healthy", database: "connected", latency, timestamp })
+    return Response.json({ status: "healthy", database: "connected", latency, timestamp })
   } catch (error) {
     const latency = Date.now() - start
     const message = error instanceof Error ? error.message : "Unknown error"
     logger.error({ error: message, latency }, "Health check failed")
 
-    return NextResponse.json(
-      { status: "unhealthy", database: "disconnected", error: message, latency, timestamp },
-      { status: 503 },
-    )
+    return apiError(503, "SERVICE_UNAVAILABLE", message, {
+      details: { status: "unhealthy", database: "disconnected", latency, timestamp },
+    })
   }
 }

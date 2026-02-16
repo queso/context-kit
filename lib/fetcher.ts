@@ -33,7 +33,15 @@ export async function mutationFetcher<T>(
   const res = await fetch(url, options)
 
   if (!res.ok) {
-    const errorBody = (await res.json()) as ApiErrorResponse
+    let errorBody: ApiErrorResponse
+    try {
+      errorBody = (await res.json()) as ApiErrorResponse
+    } catch {
+      errorBody = {
+        error: "UNKNOWN_ERROR",
+        message: "The server returned a non-JSON error response",
+      }
+    }
     const error = new Error(errorBody.message) as Error & {
       status: number
       body: ApiErrorResponse

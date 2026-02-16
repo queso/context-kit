@@ -102,9 +102,9 @@ export function serverError(message?: string, correlationId?: string): Response 
   })
 }
 
-type ValidationSuccess<T> = { success: true; data: T }
-type ValidationFailure = { success: false; response: Response }
-type ValidationResult<T> = ValidationSuccess<T> | ValidationFailure
+export type ValidationSuccess<T> = { success: true; data: T }
+export type ValidationFailure = { success: false; response: Response }
+export type ValidationResult<T> = ValidationSuccess<T> | ValidationFailure
 
 /**
  * Validates and parses JSON request body using a Zod schema.

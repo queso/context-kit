@@ -343,6 +343,30 @@ describe("mutationFetcher", () => {
     })
   })
 
+  it("should provide fallback error body when server returns non-JSON error response", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => {
+        throw new SyntaxError("Unexpected token '<'")
+      },
+    })
+
+    try {
+      await mutationFetcher("/api/users", { arg: { body: { name: "John" } } })
+      expect.fail("Should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error)
+      const err = error as Error & { status: number; body: ApiErrorResponse }
+      expect(err.status).toBe(502)
+      expect(err.body).toEqual({
+        error: "UNKNOWN_ERROR",
+        message: "The server returned a non-JSON error response",
+      })
+      expect(err.message).toBe("The server returned a non-JSON error response")
+    }
+  })
+
   it("should handle 500 errors with correlationId in error body", async () => {
     const errorBody: ApiErrorResponse = {
       error: "INTERNAL_SERVER_ERROR",

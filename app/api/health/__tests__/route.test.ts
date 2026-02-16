@@ -72,9 +72,10 @@ describe("GET /api/health", () => {
     const body = await response.json()
 
     expect(response.status).toBe(503)
-    expect(body.status).toBe("unhealthy")
-    expect(body.database).toBe("disconnected")
-    expect(body.error).toBeDefined()
+    expect(body.error).toBe("SERVICE_UNAVAILABLE")
+    expect(body.message).toBe("Connection refused")
+    expect(body.details.status).toBe("unhealthy")
+    expect(body.details.database).toBe("disconnected")
   })
 
   it("should include latency as a number in milliseconds", async () => {
@@ -119,7 +120,8 @@ describe("GET /api/health", () => {
     const body = await response.json()
 
     expect(response.status).toBe(503)
-    expect(body.status).toBe("unhealthy")
-    expect(body.database).toBe("disconnected")
+    expect(body.error).toBe("SERVICE_UNAVAILABLE")
+    expect(body.details.status).toBe("unhealthy")
+    expect(body.details.database).toBe("disconnected")
   })
 })
