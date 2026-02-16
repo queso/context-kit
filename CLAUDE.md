@@ -239,7 +239,7 @@ const { trigger } = useSWRMutation("/api/todos", mutationFetcher, {
 
 | File | Purpose |
 |------|---------|
-| `lib/fetcher.ts` | `fetcher` for SWR reads, `mutationFetcher` for SWR mutations -- both throw with `error.status` |
+| `lib/fetcher.ts` | `fetcher` for SWR reads (throws with `error.status`), `mutationFetcher` for SWR mutations (throws with `error.status` and `error.body` typed as `ApiErrorResponse`) |
 | `lib/api.ts` | `apiError()`, `notFound()`, `badRequest()` etc. + `validateBody`, `validateSearchParams`, `validateParams` |
 | `lib/cache.ts` | `revalidateByTag()`, `revalidatePath()`, `cacheHeaders()` for server-side cache control |
 | `lib/sse.ts` | `createSSEStream()` -- returns `{ stream, writer, headers }` for SSE API routes |
@@ -429,6 +429,14 @@ Validated at runtime by `lib/env.ts` using Zod. Access via `getEnv()` from `@/li
 - Test pattern: `**/*.test.{ts,tsx}`.
 - Vitest globals are enabled -- `describe`, `it`, `expect` are available without imports, though explicit imports from `vitest` are fine too.
 - Run `pnpm test` before committing. CI runs the same check.
+
+### Test quality principles
+
+- **Test behavior, not mocks.** A test that mocks a function to return X, then asserts X was returned, proves nothing. Verify observable outcomes (HTTP status codes, rendered text, return values).
+- **No tautological tests.** Do not assert that a mock was called -- that tests your test setup, not your code. Only assert on outputs the real consumer would observe.
+- **One test per behavior.** If three tests verify the same thing with trivial variations, keep one and delete the rest.
+- **Specific assertions.** Prefer `toHaveTextContent("Something went wrong")` over `toBeInTheDocument()`. Loose assertions pass when the code is broken.
+- **No timing assertions.** Do not assert `duration < 10ms` or similar. Timing varies across machines and CI runners.
 
 ## Dependency Updates
 

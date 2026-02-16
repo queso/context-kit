@@ -13,7 +13,8 @@ describe("ErrorPage", () => {
     render(<ErrorPage error={defaultError} reset={defaultReset} />)
 
     // Should show a friendly message, not the raw error string
-    expect(screen.getByRole("heading")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /an unexpected error occurred/i })).toBeInTheDocument()
+    expect(screen.getByText(/we ran into a problem loading this page/i)).toBeInTheDocument()
     expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument()
   })
 
@@ -35,9 +36,10 @@ describe("NotFound", () => {
   it("renders a not found message with a link home", () => {
     render(<NotFound />)
 
-    expect(screen.getByText(/not found|404/i)).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /404.*page not found/i })).toBeInTheDocument()
+    expect(screen.getByText(/the page you are looking for does not exist or has been moved/i)).toBeInTheDocument()
 
-    const homeLink = screen.getByRole("link", { name: /home|back/i })
+    const homeLink = screen.getByRole("link", { name: /go back home/i })
     expect(homeLink).toBeInTheDocument()
     expect(homeLink).toHaveAttribute("href", "/")
   })
@@ -45,14 +47,13 @@ describe("NotFound", () => {
 
 describe("Loading", () => {
   it("renders a loading indicator", () => {
-    const { container } = render(<Loading />)
+    render(<Loading />)
 
-    // The loading page should render something visible -- an element with a
-    // loading-related role, text, or at minimum some non-empty markup.
-    const hasLoadingRole = screen.queryByRole("status") !== null
-    const hasLoadingText = screen.queryByText(/loading/i) !== null
-    const hasContent = container.firstChild !== null
+    // Verify the spinner element exists
+    const spinner = document.querySelector(".animate-spin")
+    expect(spinner).toBeInTheDocument()
 
-    expect(hasLoadingRole || hasLoadingText || hasContent).toBe(true)
+    // Verify accessible loading text
+    expect(screen.getByText("Loading")).toBeInTheDocument()
   })
 })

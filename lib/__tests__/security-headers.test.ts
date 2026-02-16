@@ -3,8 +3,12 @@ import { getSecurityHeaders } from "@/lib/security-headers"
 
 type SecurityHeader = { key: string; value: string }
 
-function findHeader(headers: SecurityHeader[], key: string): string | undefined {
-  return headers.find((h) => h.key === key)?.value
+function findHeader(headers: SecurityHeader[], key: string): string {
+  const header = headers.find((h) => h.key === key)
+  if (!header) {
+    throw new Error(`Header "${key}" not found`)
+  }
+  return header.value
 }
 
 describe("getSecurityHeaders", () => {
@@ -23,19 +27,31 @@ describe("getSecurityHeaders", () => {
 
   describe("Content-Security-Policy", () => {
     it("should allow unsafe-inline for style-src to support Tailwind CSS", () => {
-      const csp = findHeader(getSecurityHeaders(), "Content-Security-Policy")!
-      expect(csp).toMatch(/style-src[^;]*'unsafe-inline'/)
+      const csp = findHeader(getSecurityHeaders(), "Content-Security-Policy")
+      expect(csp).toMatch(/style-src\s+'self'\s+'unsafe-inline'/)
     })
 
     it("should exclude unsafe-eval from script-src in production", () => {
-      const csp = findHeader(getSecurityHeaders("production"), "Content-Security-Policy")!
+      const csp = findHeader(getSecurityHeaders("production"), "Content-Security-Policy")
       const scriptSrc = csp.match(/script-src([^;]*)/)?.[1] ?? ""
       expect(scriptSrc).not.toContain("'unsafe-eval'")
     })
 
     it("should include unsafe-eval in script-src in development", () => {
-      const csp = findHeader(getSecurityHeaders("development"), "Content-Security-Policy")!
-      expect(csp).toMatch(/script-src[^;]*'unsafe-eval'/)
+      const csp = findHeader(getSecurityHeaders("development"), "Content-Security-Policy")
+      expect(csp).toMatch(/script-src\s+'self'\s+'unsafe-eval'/)
+    })
+
+    it("should not include unsafe-inline or unsafe-eval in script-src in production", () => {
+      const csp = findHeader(getSecurityHeaders("production"), "Content-Security-Policy")
+      const scriptSrc = csp.match(/script-src([^;]*)/)?.[1] ?? ""
+
+      // Production should not have dangerous directives for scripts
+      expect(scriptSrc).not.toContain("'unsafe-inline'")
+      expect(scriptSrc).not.toContain("'unsafe-eval'")
+
+      // But should allow self
+      expect(scriptSrc).toContain("'self'")
     })
   })
 
@@ -60,7 +76,7 @@ describe("getSecurityHeaders", () => {
     })
 
     it("should disable camera, microphone, and geolocation in Permissions-Policy", () => {
-      const policy = findHeader(headers, "Permissions-Policy")!
+      const policy = findHeader(headers, "Permissions-Policy")
       expect(policy).toContain("camera=()")
       expect(policy).toContain("microphone=()")
       expect(policy).toContain("geolocation=()")
