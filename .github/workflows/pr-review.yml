@@ -22,11 +22,26 @@
 #
 # Reviewer context: CLAUDE.md plus every AGENTS.md within three levels (lib/, db/, app/) is
 # concatenated into the shared prompt prefix, so this repo's conventions ride every shard.
+#
+# Trust model: the PR diff is author-controlled input to the model, and the posted review
+# (including the blocking verdict) is model output derived from it. Treat review text as
+# untrusted automation, not a human sign-off, and do not make this check the only barrier
+# for sensitive changes. A prompt injection in the diff can steer both the comments and
+# the verdict; the fork guard limits who can trigger it, not what it can say.
 name: Nitpick PR Review
 
 on:
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
+
+env:
+  # The flow image runs the whole pipeline and receives the gateway key, so it is pinned by
+  # content digest, not the `:main` tag (a moving pointer the publisher can re-push, invisible
+  # in any diff here). Bump this deliberately when re-syncing from upstream:
+  #   gh api /user/packages/container/nitpick-flow/versions \
+  #     --jq '.[] | select(.metadata.container.tags | index("main")) | .name'
+  # Digest below = nitpick-flow sha-2d8a694 (pushed 2026-09-09).
+  FLOW_IMAGE: ghcr.io/queso/nitpick-flow@sha256:c369976ecf8de993934350fdfc76b5e70909450c6b5514a6692afc71351129bd
 
 jobs:
   review:
@@ -40,7 +55,7 @@ jobs:
       pull-requests: write
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Fetch PR diff + context
         env:
@@ -141,8 +156,6 @@ jobs:
         # the files we docker cp in. Fallback on any failure is an empty pack — review still runs,
         # just without the extra context.
         # Runs after GHCR login so a private FLOW_IMAGE pulls authenticated, not anonymous.
-        env:
-          FLOW_IMAGE: ghcr.io/queso/nitpick-flow:main
         run: |
           # World-writable scratch dir: the image runs as its non-root `conduit` user, whose uid
           # does not match the runner's, so a plain bind-mounted dir is EACCES on first write.
@@ -162,7 +175,6 @@ jobs:
 
       - name: Run Nitpick flow
         env:
-          FLOW_IMAGE: ghcr.io/queso/nitpick-flow:main
           REVIEWER_MODEL: accounts/fireworks/models/glm-5p3-flash
           COORDINATOR_MODEL: accounts/fireworks/models/glm-5p3-flash
           CONDUIT_BASE_URL: https://api.fireworks.ai/inference/v1
@@ -275,8 +287,6 @@ jobs:
         # pipeline would swallow docker's failure silently); a reporting failure emits a
         # visible ::warning:: annotation instead of failing the job.
         if: failure()
-        env:
-          FLOW_IMAGE: ghcr.io/queso/nitpick-flow:main
         run: |
           rc=0; out=$(docker run --rm -v conduit_data:/data \
             --entrypoint bun "$FLOW_IMAGE" /flow/report-failure.mjs) || rc=$?
@@ -295,8 +305,6 @@ jobs:
         # code captured explicitly (no pipefail in the default shell) so a docker
         # failure surfaces as a ::warning:: annotation instead of vanishing.
         if: always()
-        env:
-          FLOW_IMAGE: ghcr.io/queso/nitpick-flow:main
         run: |
           rc=0; out=$(docker run --rm -v conduit_data:/data \
             --entrypoint bun "$FLOW_IMAGE" /flow/report-cost.mjs) || rc=$?
@@ -309,7 +317,6 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          FLOW_IMAGE: ghcr.io/queso/nitpick-flow:main
         run: |
           set -euo pipefail
           # post-review.mjs is baked into the image (/flow/post-review.mjs); run it via the
