@@ -1,25 +1,27 @@
+import { describe, expect, it, mock } from "bun:test"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
 import ErrorPage from "@/app/error"
 import Loading from "@/app/loading"
 import NotFound from "@/app/not-found"
 
 describe("ErrorPage", () => {
   const defaultError = new Error("Something went wrong")
-  const defaultReset = vi.fn()
+  const defaultReset = mock()
 
   it("renders a user-friendly error message", () => {
     render(<ErrorPage error={defaultError} reset={defaultReset} />)
 
     // Should show a friendly message, not the raw error string
-    expect(screen.getByRole("heading", { name: /an unexpected error occurred/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { name: /an unexpected error occurred/i }),
+    ).toBeInTheDocument()
     expect(screen.getByText(/we ran into a problem loading this page/i)).toBeInTheDocument()
     expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument()
   })
 
   it("renders a try again button that calls reset", async () => {
-    const reset = vi.fn()
+    const reset = mock()
     const user = userEvent.setup()
 
     render(<ErrorPage error={defaultError} reset={reset} />)
@@ -28,7 +30,7 @@ describe("ErrorPage", () => {
     expect(button).toBeInTheDocument()
 
     await user.click(button)
-    expect(reset).toHaveBeenCalledOnce()
+    expect(reset).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -37,7 +39,9 @@ describe("NotFound", () => {
     render(<NotFound />)
 
     expect(screen.getByRole("heading", { name: /404.*page not found/i })).toBeInTheDocument()
-    expect(screen.getByText(/the page you are looking for does not exist or has been moved/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/the page you are looking for does not exist or has been moved/i),
+    ).toBeInTheDocument()
 
     const homeLink = screen.getByRole("link", { name: /go back home/i })
     expect(homeLink).toBeInTheDocument()

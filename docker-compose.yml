@@ -1,3 +1,19 @@
+# Local development stack.
+#
+# Default (SQLite, no extra services):
+#   docker compose up -d
+#   The app stores its database in the named volume `data` (mounted at /app/data).
+#
+# Postgres lane (opt-in via the `postgres` profile):
+#   DATABASE_URL=postgres://context_kit:context_kit@postgres:5432/context_kit \
+#     docker compose --profile postgres up -d
+#   Postgres is published on the host at ${POSTGRES_PORT:-5432}; set POSTGRES_PORT when
+#   another Postgres already owns 5432.
+#
+# The `app` service has no depends_on so the default lane stays single-container.
+# In the Postgres lane the app fails fast if Postgres is not accepting connections
+# yet; `restart: unless-stopped` retries it until the healthcheck passes.
+
 services:
   app:
     build:
@@ -10,17 +26,16 @@ services:
       - .:/app
       - /app/node_modules
       - /app/.next
+      - data:/app/data
     environment:
-      DATABASE_URL: postgresql://context_kit:context_kit@postgres:5432/context_kit
-    depends_on:
-      postgres:
-        condition: service_healthy
+      DATABASE_URL: ${DATABASE_URL:-sqlite:/app/data/dev.sqlite}
 
   postgres:
     image: postgres:17
+    profiles: ["postgres"]
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: context_kit
       POSTGRES_PASSWORD: context_kit
@@ -34,4 +49,5 @@ services:
       retries: 5
 
 volumes:
+  data:
   pgdata:

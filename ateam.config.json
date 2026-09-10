@@ -1,17 +1,17 @@
 {
-  "packageManager": "pnpm",
+  "packageManager": "bun",
   "checks": {
-    "lint": "pnpm check",
-    "unit": "pnpm test",
-    "typecheck": "pnpm typecheck",
-    "validate": "pnpm validate",
-    "e2e": "pnpm test:e2e"
+    "lint": "bun run check",
+    "unit": "bun test",
+    "typecheck": "bun run typecheck",
+    "validate": "bun run validate",
+    "e2e": "bun run test:e2e"
   },
   "precheck": ["validate"],
   "postcheck": ["validate", "e2e"],
   "devServer": {
     "url": "http://localhost:3000",
-    "start": "pnpm dev",
+    "start": "bun run dev",
     "restart": "docker compose restart app",
     "managed": false
   }

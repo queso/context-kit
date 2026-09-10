@@ -20,23 +20,27 @@ git init
 #    - Update the title in CLAUDE.md and app/layout.tsx
 #    - Replace "context-kit" references with your project name
 
-# 3. Set up environment
+# 3. Set up environment (optional -- DATABASE_URL defaults to a local SQLite file)
 cp .env.example .env
-#    - Fill in DATABASE_URL (or keep the default for local Docker)
+#    - Point DATABASE_URL at Postgres if you want it (sqlite:./data/dev.sqlite by default)
 #    - Set SITE_URL to your production domain when ready
 
 # 4. Start developing
-docker compose up -d        # starts Postgres + Next.js
+bun install
+bun run db:migrate
+bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). You're up.
+Open [http://localhost:3000](http://localhost:3000). You're up. Three commands, no container.
 
-**Without Docker:** Run Postgres yourself, then `pnpm install && pnpm db:generate && pnpm dev`. The `db:generate` step creates the Prisma client in `lib/generated/` -- Docker handles this automatically, but local dev needs it before the first run.
+**Without Docker you need two things installed:** [Bun](https://bun.sh) 1.3.x is the package manager, script runner, and test runner. Node 24+ runs the Next server, because Bun's runtime cannot build or start Next 16 yet ([oven-sh/bun#25609](https://github.com/oven-sh/bun/issues/25609)); `bun run dev` handles this transparently. `package.json` declares `engines.node >= 24`; install Node with any version manager, no version file is shipped.
+
+**With Docker:** `docker compose up -d` runs the app alone against a SQLite file on a named volume. To develop against Postgres 17 instead, `DATABASE_URL=postgres://context_kit:context_kit@postgres:5432/context_kit docker compose --profile postgres up -d` starts both.
 
 **Next steps after setup:**
 
-1. Edit `prisma/schema.prisma` to define your domain models
-2. Run `pnpm db:push` to sync the schema to your database
+1. Edit the schema module your `DATABASE_URL` selects (`db/schema/sqlite.ts` by default, `db/schema/postgres.ts` for Postgres) to define your domain tables. Both files must stay in place because `db/index.ts` imports both; leave the other as the empty template
+2. Run `bun run db:generate` to write a SQL migration, then `bun run db:migrate` to apply it
 3. Update `CLAUDE.md` to describe your project -- this is what AI tools read first
 4. Add `AGENTS.md` files in subdirectories as your codebase grows
 5. Start building. The foundation handles env validation, logging, security headers, SEO, error pages, and health checks out of the box.
@@ -46,17 +50,16 @@ Open [http://localhost:3000](http://localhost:3000). You're up.
 | Layer | Choice | Why |
 |-------|--------|-----|
 | Framework | **Next.js 16** (App Router) | The default choice for production React. App Router is the future, no reason to start with Pages. |
-| Runtime | **Node 22** via [fnm](https://github.com/Schniz/fnm) | Fast, cross-platform, reads `.node-version` automatically. Drop-in nvm replacement. |
-| Package Manager | **pnpm** via [corepack](https://nodejs.org/api/corepack.html) | Fast, disk-efficient, strict by default. Version pinned in `package.json`. |
+| Toolchain | **Bun** + Node 24 | Bun is package manager, script runner, and test runner in one binary, pinned in `.bun-version`. Node 24 runs the Next server until Bun's runtime can ([oven-sh/bun#25609](https://github.com/oven-sh/bun/issues/25609)). |
 | Language | **TypeScript** (strict mode) | Strict mode catches real bugs. If you're going to use TypeScript, actually use it. |
 | UI | **React 19** | Server Components, Actions, and the new hooks are too useful to leave on the table. |
 | Styling | **Tailwind CSS v4** | Fastest way to style components without context-switching to CSS files. v4 is leaner and faster. |
 | Components | **shadcn/ui** | Copy-paste components you own. No dependency lock-in, full control, looks good out of the box. |
 | Code Quality | **Biome** | Replaces ESLint + Prettier with a single tool. Faster, less config, fewer dependency headaches. |
-| Testing | **Vitest + React Testing Library** | Fast, native ESM support, compatible API. No reason to use Jest anymore. |
-| Database | **Prisma ORM** | Great DX, type-safe queries, works with any SQL database. Swap Postgres for SQLite in dev, nobody cares. |
-| Local Dev | **Docker Compose** | Postgres and any other services via OrbStack or Docker Desktop. One command, no local installs. |
-| CI | **GitHub Actions** | Lint, type-check, and test on every PR. Ships as a workflow file, ready to go. |
+| Testing | **bun test + React Testing Library** | Built into Bun, fast, Jest-compatible API. One less tool to install and configure. |
+| Database | **Drizzle ORM** | SQLite via `@libsql/client` by default, Postgres for the SaaS lane. Plain-SQL migrations you can read in a PR, no codegen step. |
+| Local Dev | **Docker Compose** | Runs the app on SQLite by default; Postgres sits behind a profile for when you need it. OrbStack or Docker Desktop, one command, no local installs. |
+| CI | **GitHub Actions** | Lint, type-check, and test on every PR, on SQLite and on Postgres. Ships as a workflow file, ready to go. |
 | Dependency Updates | **Dependabot + Renovate** | Dependabot for Actions versions, Renovate for npm with auto-merge. Patch/minor ship automatically when CI passes. |
 | AI Context | **CLAUDE.md + AGENTS.md** | The whole point. Project-level and directory-level context for AI coding tools. |
 

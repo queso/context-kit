@@ -1,5 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it, jest, mock, spyOn } from "bun:test"
 import { NextRequest } from "next/server"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { resetRateLimiter } from "@/lib/rate-limiter"
+import { config, middleware, runtime } from "../middleware"
 
 type Env = ReturnType<typeof import("@/lib/env").getEnv>
 
@@ -16,51 +18,48 @@ function mockEnv(overrides: Partial<Env> = {}): Env {
   return { ...defaultMockEnv, ...overrides }
 }
 
-// Mock environment and logger before importing middleware
-vi.mock("@/lib/env", () => ({
-  getEnv: vi.fn(() => defaultMockEnv),
-}))
+// Spy on the real env and logger modules (module mocks are process-global in bun:test and would
+// leak into env.test.ts / logger.test.ts). Named imports inside middleware.ts see the spies.
+// Spies are (re)created fresh before every test and restored after, so no state or call history
+// leaks between tests.
+const envMod = await import("@/lib/env")
+const loggerMod = await import("@/lib/logger")
 
-vi.mock("@/lib/logger", () => ({
-  getLogger: vi.fn(() => ({
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  })),
-}))
+let getEnv: ReturnType<typeof spyOn<typeof envMod, "getEnv">>
 
-// Import after mocks are set up
-const { getEnv } = await import("@/lib/env")
-const { getLogger } = await import("@/lib/logger")
+beforeEach(() => {
+  // The limiter is module-level state; reset it explicitly rather than re-importing the module.
+  resetRateLimiter()
+  getEnv = spyOn(envMod, "getEnv").mockReturnValue(defaultMockEnv)
+  const noopLogger = { info: mock(), error: mock(), warn: mock(), debug: mock() }
+  spyOn(loggerMod, "getLogger").mockReturnValue(
+    noopLogger as unknown as ReturnType<typeof loggerMod.getLogger>,
+  )
+})
+
+afterEach(() => {
+  mock.restore()
+})
 
 describe("middleware exports", () => {
   it("should export middleware function", async () => {
-    const { middleware } = await import("../middleware")
     expect(typeof middleware).toBe("function")
   })
 
   it("should export config with API matcher", async () => {
-    const { config } = await import("../middleware")
     expect(config).toBeDefined()
     expect(config.matcher).toEqual(["/api/:path*"])
   })
 
   it("should export runtime as nodejs", async () => {
-    const { runtime } = await import("../middleware")
     expect(runtime).toBe("nodejs")
   })
 })
 
 describe("CORS handling", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
   it("should NOT set Access-Control-Allow-Origin when CORS_ORIGIN is empty", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv())
+    getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -68,9 +67,8 @@ describe("CORS handling", () => {
   })
 
   it("should set CORS headers when CORS_ORIGIN is set", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
+    getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -80,9 +78,8 @@ describe("CORS handling", () => {
   })
 
   it("should set Access-Control-Allow-Credentials when CORS_ORIGIN is specific origin", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
+    getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -90,9 +87,8 @@ describe("CORS handling", () => {
   })
 
   it("should NOT set Access-Control-Allow-Credentials when CORS_ORIGIN is wildcard", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ CORS_ORIGIN: "*" }))
+    getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "*" }))
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -101,9 +97,8 @@ describe("CORS handling", () => {
   })
 
   it("should handle OPTIONS preflight with 204 and CORS headers", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
+    getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       method: "OPTIONS",
     })
@@ -117,18 +112,17 @@ describe("CORS handling", () => {
 
 describe("Rate limiting", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    vi.useFakeTimers()
+    jest.useFakeTimers()
   })
 
   afterEach(() => {
-    vi.useRealTimers()
+    jest.clearAllTimers()
+    jest.useRealTimers()
   })
 
   it("should allow requests under rate limit", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv())
+    getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       headers: { "X-Forwarded-For": "192.168.1.1" },
     })
@@ -138,11 +132,9 @@ describe("Rate limiting", () => {
   })
 
   it("should return 429 when rate limit exceeded", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 2 }))
+    getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 2 }))
 
-    // Need to re-import to reset rate limit state
-    vi.resetModules()
-    const { middleware } = await import("../middleware")
+    // Rate-limit state is reset via resetRateLimiter() in beforeEach.
 
     const makeRequest = async () => {
       const request = new NextRequest(new URL("http://localhost/api/test"), {
@@ -161,10 +153,7 @@ describe("Rate limiting", () => {
   })
 
   it("should return ApiErrorResponse shape on 429", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 1 }))
-
-    vi.resetModules()
-    const { middleware } = await import("../middleware")
+    getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 1 }))
 
     const request1 = new NextRequest(new URL("http://localhost/api/test"), {
       headers: { "X-Forwarded-For": "192.168.1.1" },
@@ -183,10 +172,7 @@ describe("Rate limiting", () => {
   })
 
   it("should include Retry-After header on 429", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 1 }))
-
-    vi.resetModules()
-    const { middleware } = await import("../middleware")
+    getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 1 }))
 
     const makeRequest = async () => {
       const request = new NextRequest(new URL("http://localhost/api/test"), {
@@ -203,10 +189,7 @@ describe("Rate limiting", () => {
   })
 
   it("should use X-Forwarded-For for IP identification", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 2 }))
-
-    vi.resetModules()
-    const { middleware } = await import("../middleware")
+    getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 2 }))
 
     // Different IPs should have separate rate limits
     const request1 = new NextRequest(new URL("http://localhost/api/test"), {
@@ -224,9 +207,8 @@ describe("Rate limiting", () => {
   })
 
   it("should fall back to unknown IP when X-Forwarded-For is missing", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv())
+    getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -234,10 +216,7 @@ describe("Rate limiting", () => {
   })
 
   it("should reset rate limit window after 60 seconds", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 1 }))
-
-    vi.resetModules()
-    const { middleware } = await import("../middleware")
+    getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 1 }))
 
     const makeRequest = async () => {
       const request = new NextRequest(new URL("http://localhost/api/test"), {
@@ -255,7 +234,7 @@ describe("Rate limiting", () => {
     expect(response2.status).toBe(429)
 
     // Advance time by 60 seconds
-    vi.advanceTimersByTime(60000)
+    jest.advanceTimersByTime(60000)
 
     // Third request (should succeed after window reset)
     const response3 = await makeRequest()
@@ -264,14 +243,9 @@ describe("Rate limiting", () => {
 })
 
 describe("Correlation ID", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
   it("should pass through existing X-Correlation-Id from request", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv())
+    getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       headers: { "X-Correlation-Id": "existing-123" },
     })
@@ -281,9 +255,8 @@ describe("Correlation ID", () => {
   })
 
   it("should generate UUID when X-Correlation-Id is missing", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv())
+    getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -296,9 +269,8 @@ describe("Correlation ID", () => {
   })
 
   it("should set X-Correlation-Id on response", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv())
+    getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -307,17 +279,11 @@ describe("Correlation ID", () => {
 })
 
 describe("Error handling", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
   it("should return 500 with ApiErrorResponse shape when getEnv() throws", async () => {
-    vi.mocked(getEnv).mockImplementation(() => {
+    getEnv.mockImplementation(() => {
       throw new Error("Environment validation failed")
     })
 
-    vi.resetModules()
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -329,12 +295,10 @@ describe("Error handling", () => {
   })
 
   it("should return JSON response on env error", async () => {
-    vi.mocked(getEnv).mockImplementation(() => {
+    getEnv.mockImplementation(() => {
       throw new Error("Environment validation failed")
     })
 
-    vi.resetModules()
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -344,14 +308,9 @@ describe("Error handling", () => {
 })
 
 describe("Integration scenarios", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
   it("should handle complete request flow with all features", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
+    getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       headers: {
         "X-Forwarded-For": "192.168.1.1",
@@ -372,9 +331,8 @@ describe("Integration scenarios", () => {
   })
 
   it("should handle POST request with body", async () => {
-    vi.mocked(getEnv).mockReturnValue(mockEnv())
+    getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
     const request = new NextRequest(new URL("http://localhost/api/users"), {
       method: "POST",
       body: JSON.stringify({ name: "John" }),

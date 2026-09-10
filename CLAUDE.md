@@ -6,29 +6,32 @@ This is a foundation, not a SaaS boilerplate. There is no auth, no billing, no e
 
 ## Stack
 
-Next.js 16 with App Router, React 19, TypeScript in strict mode, Tailwind CSS v4, shadcn/ui (New York style, lucide icons), Biome for linting and formatting, Vitest with React Testing Library for tests, Prisma ORM with PostgreSQL, SWR for client-side data fetching, reactiveSWR for real-time SSE, pnpm for package management, Docker Compose for local dev, GitHub Actions for CI.
+Next.js 16 with App Router, React 19, TypeScript in strict mode, Tailwind CSS v4, shadcn/ui (New York style, lucide icons), Biome for linting and formatting, `bun test` with React Testing Library for tests, Drizzle ORM with SQLite (`@libsql/client`) by default and PostgreSQL optional, SWR for client-side data fetching, reactiveSWR for real-time SSE, Bun for package management, scripts, and tests; Node 24 for the Next server, Docker Compose for local dev, GitHub Actions for CI.
 
-Node 22 (see `.node-version`). Use fnm to manage versions. pnpm is the package manager (corepack-managed, version pinned in `package.json`).
+Bun 1.3 (see `.bun-version`, pinned again as `packageManager` in `package.json`). Install it from https://bun.sh. Node 24+ is also required (`engines.node` in `package.json`; unlike Bun there is no `.node-version` file, so use any version manager): Bun's runtime cannot build or start Next 16 yet, so `bun run dev`, `build`, and `start` hand the Next process to Node transparently.
 
 ## Running the Project
 
-**With Docker (recommended):**
+**Locally (recommended):**
 
 ```bash
-cp .env.example .env
+bun install
+bun run db:migrate
+bun run dev
+```
+
+`DATABASE_URL` defaults to `sqlite:./data/dev.sqlite`, so no `.env` is needed to start. Copy `.env.example` to `.env` when you want to change it. App runs at http://localhost:3000.
+
+**With Docker:**
+
+```bash
 docker compose up -d
 ```
 
-This starts Postgres and the Next.js dev server. Code is volume-mounted so changes hot reload. App runs at http://localhost:3000.
-
-**Without Docker:**
+This starts the app alone against a SQLite file on a named volume. Code is volume-mounted so changes hot reload. To develop against Postgres 17 instead:
 
 ```bash
-cp .env.example .env
-pnpm install
-pnpm db:generate
-# Start Postgres yourself, then:
-pnpm dev
+DATABASE_URL=postgres://context_kit:context_kit@postgres:5432/context_kit docker compose --profile postgres up -d
 ```
 
 ## Scripts
@@ -44,16 +47,18 @@ pnpm dev
 | `format:fix` | Auto-fix formatting |
 | `check` | Run all Biome checks (lint + format) |
 | `check:fix` | Auto-fix all Biome issues |
-| `test` | Run Vitest tests once |
-| `test:watch` | Run Vitest in watch mode |
+| `test` | Run tests once with `bun test` |
+| `test:watch` | Run `bun test` in watch mode |
 | `test:coverage` | Run tests with coverage report |
+| `test:e2e` | Run flowspec end-to-end tests |
 | `typecheck` | Run TypeScript type checking (tsc --noEmit) |
-| `db:generate` | Generate Prisma client |
+| `db:generate` | Generate a SQL migration from schema changes (drizzle-kit) |
 | `db:push` | Push schema changes to database (no migration file) |
-| `db:migrate` | Create and apply a Prisma migration |
-| `db:studio` | Open Prisma Studio GUI |
-| `db:seed` | Run database seed script |
+| `db:migrate` | Apply pending migrations |
+| `db:studio` | Open Drizzle Studio GUI |
 | `validate` | Run typecheck + check + test (same as CI) |
+
+Run scripts with `bun run <script>` (`bun test` also works directly). The Next server is deliberately left on Node; `package.json` declares `engines.node >= 24` for it.
 
 ## Code Conventions
 
@@ -83,32 +88,46 @@ app/                        Next.js App Router pages and layouts
   page.tsx                  Home page
   globals.css               Tailwind v4 + shadcn/ui theme variables
 components/
-  ui/                       shadcn/ui components (add via `pnpm dlx shadcn add`)
+  ui/                       shadcn/ui components (add via `bunx shadcn add`)
+db/                         Database layer (Drizzle)
+  __tests__/                Database layer tests
+  index.ts                  Drizzle instance `db` (plus `getDb()`, `getDialect()`, `ping()`) -- driver picked from DATABASE_URL
+  migrate.ts                Migration runner (`bun run db:migrate`)
+  schema/
+    sqlite.ts               Schema for the SQLite dialect (default)
+    postgres.ts             Schema for the PostgreSQL dialect
+  migrations/
+    sqlite/                 Generated SQL migrations (SQLite)
+    postgres/               Generated SQL migrations (PostgreSQL)
 lib/                        Shared utilities
   __tests__/                Utility tests (*.test.ts)
-  db.ts                     Prisma client singleton
   api.ts                    API error responses, validation utilities (validateBody, validateSearchParams, validateParams)
   cache.ts                  Cache revalidation wrappers and Cache-Control header builder
   env.ts                    Zod environment validation (DATABASE_URL, LOG_LEVEL, SITE_URL, CORS_ORIGIN, RATE_LIMIT_RPM)
   fetcher.ts                Typed fetch wrapper for SWR and mutations
   logger.ts                 Pino structured logging (createLogger, getLogger, logger)
+  rate-limiter.ts           In-memory fixed-window rate limiter (checkRateLimit, getRateLimitRetryAfter)
   security-headers.ts       Security headers (CSP, HSTS, etc.)
   sse.ts                    Server-side SSE stream utility (createSSEStream)
   utils.ts                  cn() helper for Tailwind class merging
-  generated/                Prisma generated client (gitignored)
+test/
+  preload.ts                `bun test` preload: happy-dom, jest-dom matchers, RTL cleanup
 types/
-  reactive-swr.d.ts         Type declarations for reactive-swr (installed from GitHub)
-prisma/
-  schema.prisma             Database schema (source of truth)
-  migrations/               Migration files (gitignored until committed)
+  bun-test.d.ts             jest-dom matcher types for `bun:test`
+data/                       Local SQLite database files (gitignored)
 docs/                       Project documentation
 prd/                        Product Requirements Documents
 public/                     Static assets
 .github/
   dependabot.yml            Dependabot config (GitHub Actions updates only)
   workflows/
-    ci.yml                  GitHub Actions: typecheck, lint, test on PRs
+    ci.yml                  GitHub Actions: typecheck, lint, test on PRs (SQLite + Postgres jobs)
     pr-review.yml           GitHub Actions: AI PR review via nitpick-flow (needs FIREWORKS_AI_API_KEY secret + GHCR package read grant)
+.bun-version                Bun version pin (also `packageManager` in package.json)
+bun.lock                    Bun lockfile (committed)
+bunfig.toml                 Bun test runner config (preload)
+drizzle.config.ts           drizzle-kit config (dialect from DATABASE_URL)
+instrumentation.ts          Applies pending migrations at server start
 middleware.ts                Next.js middleware (CORS, rate limiting, correlation IDs, request logging)
 renovate.json               Renovate config (npm dependency auto-updates)
 ```
@@ -116,14 +135,14 @@ renovate.json               Renovate config (npm dependency auto-updates)
 ## Key Patterns
 
 - **Server Components by default.** Only add `"use client"` when you need browser APIs, event handlers, or React hooks.
-- **Prisma singleton** in `lib/db.ts`. Import `prisma` from `@/lib/db` -- do not create new PrismaClient instances.
-- **Prisma client output** goes to `lib/generated/prisma`. Import types from `@/lib/generated/prisma/client`.
-- **shadcn/ui components** go in `components/ui/`. Add them with `pnpm dlx shadcn add <component>`.
+- **Drizzle instance** in `db/index.ts`. Import `db` from `@/db` -- do not create a second Drizzle instance.
+- **Schema modules** are dialect-specific: `db/schema/sqlite.ts` and `db/schema/postgres.ts`. Edit the one your `DATABASE_URL` selects and import tables from it. Both files must exist because `db/index.ts` imports both; leave the unused one as the empty template. See `db/AGENTS.md`.
+- **shadcn/ui components** go in `components/ui/`. Add them with `bunx shadcn add <component>`.
 - **`cn()` utility** in `lib/utils.ts` for merging Tailwind classes. Use it in component className props.
-- **Test files** are colocated in `__tests__/` directories as `*.test.tsx`. Vitest uses jsdom environment with globals enabled.
+- **Test files** are colocated in `__tests__/` directories as `*.test.ts` or `*.test.tsx`. `bun test` registers happy-dom via `test/preload.ts`.
 - **API error responses** use `@/lib/api`. Return `notFound()`, `badRequest()`, etc. -- never construct raw JSON error responses.
 - **Request validation** uses `validateBody`, `validateSearchParams`, `validateParams` from `@/lib/api` with Zod schemas. Always validate before processing.
-- **Middleware** in `middleware.ts` handles CORS, rate limiting, correlation IDs, and request logging for all `/api/*` routes automatically.
+- **Middleware** in `middleware.ts` handles CORS, rate limiting, correlation IDs, and request logging for all `/api/*` routes automatically. The limiter itself lives in `lib/rate-limiter.ts`; middleware calls it.
 - **Correlation IDs** flow from `<Providers>` through SWR fetcher headers to middleware to structured logs. Use `useCorrelationId()` in client components when calling `mutationFetcher`.
 
 ## Data Fetching
@@ -246,7 +265,7 @@ const { trigger } = useSWRMutation("/api/todos", mutationFetcher, {
 | `lib/sse.ts` | `createSSEStream()` -- returns `{ stream, writer, headers }` for SSE API routes |
 | `app/providers.tsx` | `<Providers>` -- SWRConfig + SSEProvider + CorrelationIdContext. `useCorrelationId()` hook |
 | `middleware.ts` | CORS, rate limiting, correlation IDs, request logging for all `/api/*` routes |
-| `types/reactive-swr.d.ts` | Type declarations for the reactive-swr package |
+| `db/index.ts` | `db` (Drizzle instance), `getDb()` (same instance, as a function call for code that must not hold the proxy), `getDialect()`, and `ping()` -- the only database entry point |
 
 ## API Layer
 
@@ -255,9 +274,11 @@ const { trigger } = useSWRMutation("/api/todos", mutationFetcher, {
 All API route handlers validate input using Zod schemas and the validation helpers from `@/lib/api`. Each returns a discriminated union: `{ success: true, data: T }` or `{ success: false, response: Response }`.
 
 ```typescript
+import { eq } from "drizzle-orm"
 import { z } from "zod"
 import { validateBody, validateSearchParams, validateParams, notFound } from "@/lib/api"
-import { prisma } from "@/lib/db"
+import { db } from "@/db"
+import { todos } from "@/db/schema/sqlite"
 
 // Validate JSON body (POST/PUT/PATCH)
 const CreateTodoSchema = z.object({
@@ -269,7 +290,7 @@ export async function POST(request: Request) {
   const result = await validateBody(request, CreateTodoSchema)
   if (!result.success) return result.response
 
-  const todo = await prisma.todo.create({ data: result.data })
+  const [todo] = await db.insert(todos).values(result.data).returning()
   return Response.json(todo, { status: 201 })
 }
 
@@ -284,8 +305,8 @@ export async function GET(request: Request) {
   if (!result.success) return result.response
 
   const { page, limit } = result.data
-  const todos = await prisma.todo.findMany({ skip: (page - 1) * limit, take: limit })
-  return Response.json(todos)
+  const rows = await db.select().from(todos).limit(limit).offset((page - 1) * limit)
+  return Response.json(rows)
 }
 
 // Validate route params (dynamic segments)
@@ -297,7 +318,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const result = validateParams(await params, TodoParamsSchema)
   if (!result.success) return result.response
 
-  const todo = await prisma.todo.findUnique({ where: { id: result.data.id } })
+  const [todo] = await db.select().from(todos).where(eq(todos.id, result.data.id))
   if (!todo) return notFound("Todo not found")
   return Response.json(todo)
 }
@@ -330,8 +351,10 @@ Use the convenience factories from `@/lib/api` -- never construct raw JSON error
 Example API route with error handling:
 
 ```typescript
+import { eq } from "drizzle-orm"
 import { validateBody, notFound, serverError } from "@/lib/api"
-import { prisma } from "@/lib/db"
+import { db } from "@/db"
+import { todos } from "@/db/schema/sqlite"
 import { getLogger } from "@/lib/logger"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -340,7 +363,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!result.success) return result.response
 
   try {
-    const todo = await prisma.todo.update({ where: { id }, data: result.data })
+    const [todo] = await db.update(todos).set(result.data).where(eq(todos.id, id)).returning()
+    if (!todo) return notFound("Todo not found")
     return Response.json(todo)
   } catch (error) {
     const logger = getLogger()
@@ -355,11 +379,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 `middleware.ts` runs automatically on all `/api/*` routes. It handles four concerns in order:
 
 1. **CORS** -- Reads `CORS_ORIGIN` from env. If set, adds `Access-Control-Allow-Origin` and related headers. Handles `OPTIONS` preflight with 204. When origin is not `*`, sets `Access-Control-Allow-Credentials: true`.
-2. **Rate limiting** -- In-memory fixed-window rate limiter. Reads `RATE_LIMIT_RPM` from env (default: 60 requests/minute/IP). Returns 429 with `Retry-After` header when exceeded. Use Redis for production distributed rate limiting.
+2. **Rate limiting** -- In-memory fixed-window rate limiter from `lib/rate-limiter.ts` (expired keys are swept on each new window). Reads `RATE_LIMIT_RPM` from env (default: 60 requests/minute/IP). Returns 429 with `Retry-After` header when exceeded. Clients are keyed on the first `X-Forwarded-For` address, which is only trustworthy behind a proxy that overwrites that header; exposed directly to the internet, a client can spoof it. Use Redis for production distributed rate limiting.
 3. **Correlation IDs** -- Reads `X-Correlation-Id` from request header or generates a UUID. Sets it on the response header. Available in logs for request tracing.
 4. **Request logging** -- Logs method, path, status, duration, and correlationId via Pino structured logger.
 
-No configuration needed beyond env vars. The middleware matcher is `/api/:path*` so it does not affect page routes.
+No configuration needed beyond env vars. The middleware matcher is `/api/:path*` so it does not affect page routes. Next 16 deprecates the `middleware.ts` convention in favour of `proxy.ts`; the kit still uses `middleware.ts` (it works and prints a deprecation warning) and will move in a follow-up.
 
 ### Caching Strategy
 
@@ -417,7 +441,7 @@ Validated at runtime by `lib/env.ts` using Zod. Access via `getEnv()` from `@/li
 
 | Variable | Type | Default | Purpose |
 |----------|------|---------|---------|
-| `DATABASE_URL` | string | (required) | PostgreSQL connection string |
+| `DATABASE_URL` | string | `sqlite:./data/dev.sqlite` outside production; required in production | Database connection string. The scheme picks the driver: `sqlite:` (`@libsql/client`, embedded SQLite) or `postgres:` / `postgresql:` (the `postgres` driver). Any other scheme fails validation |
 | `LOG_LEVEL` | `"debug" \| "info" \| "warn" \| "error"` | `"info"` | Pino log level |
 | `SITE_URL` | string | `"http://localhost:3000"` | Canonical URL for sitemap, robots.txt, Open Graph |
 | `CORS_ORIGIN` | string | `""` (same-origin only) | Allowed CORS origin. Set to `"*"` for any origin or a specific URL like `"https://app.example.com"` |
@@ -425,11 +449,17 @@ Validated at runtime by `lib/env.ts` using Zod. Access via `getEnv()` from `@/li
 
 ## Testing
 
-- Framework: Vitest + React Testing Library + jest-dom matchers.
-- Setup file: `vitest.setup.ts` (imports jest-dom matchers).
-- Test pattern: `**/*.test.{ts,tsx}`.
-- Vitest globals are enabled -- `describe`, `it`, `expect` are available without imports, though explicit imports from `vitest` are fine too.
-- Run `pnpm test` before committing. CI runs the same check.
+- Framework: `bun test` + React Testing Library + jest-dom matchers.
+- Setup file: `test/preload.ts`, preloaded via `bunfig.toml`. It registers happy-dom, restores Bun's native `fetch`/`Response`/streams on top of it, adds the jest-dom matchers, and runs RTL `cleanup()` after each test.
+- Test pattern: `**/*.test.{ts,tsx}` by convention. `bun test` itself also discovers `*.spec.*` and `*_test.*` files, so do not use those names for non-test modules.
+- Import `describe`, `it`, `expect`, `mock`, `spyOn`, and `jest` from `bun:test`. There are no test globals.
+- Run `bun test` before committing. CI runs the same check.
+
+### Mocking under `bun test`
+
+- `mock.module()` is process-global and cannot be undone. Use it only for modules no other test needs real. Prefer `spyOn(namespace, "fn")` and call `mock.restore()` in `afterEach`.
+- There is no `resetModules`. If a test needs fresh module state, give the module an explicit reset or factory (e.g. `createEnv(envObj)`) instead of re-importing it.
+- Fake timers come from `jest.useFakeTimers()` / `jest.useRealTimers()`, imported from `bun:test`.
 
 ### Test quality principles
 
@@ -444,9 +474,9 @@ Validated at runtime by `lib/env.ts` using Zod. Access via `getEnv()` from `@/li
 Automated dependency updates use two tools:
 
 - **Dependabot** (`.github/dependabot.yml`): GitHub Actions versions only. Weekly, grouped.
-- **Renovate** (`renovate.json`): npm packages. Minor/patch auto-merge when CI passes. Major versions get individual PRs for review.
+- **Renovate** (`renovate.json`): npm packages via the `bun` manager. Minor/patch auto-merge when CI passes. Major versions get individual PRs for review.
 
-Prisma, React, and testing packages are grouped (they must update together). Node.js and pnpm versions are managed manually via `.node-version` and `packageManager` in `package.json`.
+Drizzle (`drizzle-orm` + `drizzle-kit`), React, and testing packages are grouped (they must update together). The Bun version is managed manually via `.bun-version` and `packageManager` in `package.json`.
 
 Do not add an `npm` ecosystem entry to `dependabot.yml` — Renovate handles all npm updates.
 
@@ -455,8 +485,19 @@ Do not add an `npm` ecosystem entry to `dependabot.yml` — Renovate handles all
 - **Do not add ESLint or Prettier.** Biome replaces both.
 - **Do not create Pages Router files** (no `pages/` directory). This project uses App Router only.
 - **Do not add auth, billing, teams, or SaaS features.** This is a clean foundation.
-- **Do not create new PrismaClient instances.** Use the singleton from `@/lib/db`.
+- **Do not create a second Drizzle instance.** Import `db` from `@/db`.
 - **Do not weaken TypeScript strict mode.** No `any`, no `@ts-ignore`, no `skipLibCheck` changes.
-- **Do not install Jest.** Vitest is the test runner.
-- **Do not edit files in `lib/generated/`.** They are auto-generated by Prisma.
+- **Do not install Jest or another test runner.** `bun test` is the test runner.
+- **Do not hand-edit files in `db/migrations/`.** Change the schema and regenerate with `bun run db:generate`.
+- **Do not bring back the old ORM or package manager.** Drizzle and Bun replaced them on purpose; the port is deliberate.
 - **Do not use the docker-compose credentials in production.** The hardcoded `context_kit` user/password is for local development only. Use environment secrets for production databases.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

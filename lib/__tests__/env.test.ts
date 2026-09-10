@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { createEnv } from "@/lib/env"
 
 describe("createEnv", () => {
@@ -11,6 +11,16 @@ describe("createEnv", () => {
       const env = createEnv(validEnv)
 
       expect(env.DATABASE_URL).toBe("postgresql://user:pass@localhost:5432/mydb")
+    })
+
+    it("should accept a postgres:// DATABASE_URL", () => {
+      const env = createEnv({ DATABASE_URL: "postgres://user:pass@localhost:5432/mydb" })
+      expect(env.DATABASE_URL).toBe("postgres://user:pass@localhost:5432/mydb")
+    })
+
+    it("should accept a sqlite: DATABASE_URL in production", () => {
+      const env = createEnv({ NODE_ENV: "production", DATABASE_URL: "sqlite:/var/data/app.sqlite" })
+      expect(env.DATABASE_URL).toBe("sqlite:/var/data/app.sqlite")
     })
 
     it("should accept all valid LOG_LEVEL values", () => {
@@ -37,6 +47,12 @@ describe("createEnv", () => {
   })
 
   describe("defaults", () => {
+    it("should default DATABASE_URL to the local sqlite file outside production", () => {
+      expect(createEnv({}).DATABASE_URL).toBe("sqlite:./data/dev.sqlite")
+      expect(createEnv({ NODE_ENV: "development" }).DATABASE_URL).toBe("sqlite:./data/dev.sqlite")
+      expect(createEnv({ NODE_ENV: "test" }).DATABASE_URL).toBe("sqlite:./data/dev.sqlite")
+    })
+
     it("should default LOG_LEVEL to info when not set", () => {
       const env = createEnv(validEnv)
       expect(env.LOG_LEVEL).toBe("info")
@@ -59,8 +75,14 @@ describe("createEnv", () => {
   })
 
   describe("validation errors", () => {
-    it("should throw when DATABASE_URL is missing", () => {
-      expect(() => createEnv({})).toThrow(/DATABASE_URL/)
+    it("should throw when DATABASE_URL is missing in production", () => {
+      expect(() => createEnv({ NODE_ENV: "production" })).toThrow(/DATABASE_URL/)
+    })
+
+    it("should reject a DATABASE_URL with an unsupported scheme, naming the allowed ones", () => {
+      expect(() => createEnv({ DATABASE_URL: "mysql://user:pass@localhost:3306/mydb" })).toThrow(
+        /DATABASE_URL[\s\S]*sqlite:[\s\S]*postgres:/,
+      )
     })
 
     it("should throw when LOG_LEVEL is an invalid value", () => {

@@ -7,7 +7,7 @@
   "timezone": "America/New_York",
   "prHourlyLimit": 4,
   "prConcurrentLimit": 5,
-  "enabledManagers": ["npm"],
+  "enabledManagers": ["bun"],
   "packageRules": [
     {
       "description": "Auto-merge non-major updates when CI passes",
@@ -29,9 +29,9 @@
       "labels": ["dependencies", "major"]
     },
     {
-      "description": "Prisma packages must stay in sync",
-      "matchPackageNames": ["prisma", "@prisma/client", "@prisma/adapter-pg"],
-      "groupName": "prisma"
+      "description": "Drizzle packages must stay in sync",
+      "matchPackageNames": ["drizzle-orm", "drizzle-kit"],
+      "groupName": "drizzle"
     },
     {
       "description": "React ecosystem updates together",
@@ -41,24 +41,24 @@
     {
       "description": "Testing tools update together",
       "matchPackageNames": [
-        "vitest",
         "@testing-library/react",
         "@testing-library/jest-dom",
         "@testing-library/user-event",
-        "@vitejs/plugin-react",
-        "jsdom"
+        "happy-dom",
+        "@happy-dom/global-registrator",
+        "@types/bun"
       ],
       "groupName": "testing"
     },
     {
-      "description": "Node.js managed via .node-version, not Renovate",
+      "description": "Node.js managed via engines and the Dockerfile, not Renovate",
       "matchDepTypes": ["engines"],
       "matchPackageNames": ["node"],
       "enabled": false
     },
     {
-      "description": "pnpm managed via corepack/packageManager field",
-      "matchPackageNames": ["pnpm"],
+      "description": "Bun managed via .bun-version and the packageManager field, not Renovate",
+      "matchPackageNames": ["bun"],
       "enabled": false
     }
   ],

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { z } from "zod"
 import {
   type ApiErrorResponse,
@@ -258,31 +258,28 @@ describe("validateSearchParams", () => {
     }
   })
 
-  it("should handle missing required params", () => {
+  it("should handle missing required params", async () => {
     const request = new Request("http://localhost/api/test?page=1")
 
     const result = validateSearchParams(request, querySchema)
 
     expect(result.success).toBe(false)
     if (!result.success) {
-      const body = result.response.json() as Promise<ApiErrorResponse>
-      body.then((data) => {
-        expect(data.error).toBe("BAD_REQUEST")
-        expect(data.details).toBeDefined()
-      })
+      const data = (await result.response.json()) as ApiErrorResponse
+      expect(data.error).toBe("BAD_REQUEST")
+      expect(data.details).toBeDefined()
     }
   })
 
-  it("should handle validation errors with details", () => {
+  it("should handle validation errors with details", async () => {
     const request = new Request("http://localhost/api/test?page=abc&limit=200")
 
     const result = validateSearchParams(request, querySchema)
 
     expect(result.success).toBe(false)
     if (!result.success) {
-      result.response.json().then((body: ApiErrorResponse) => {
-        expect(body.details).toBeDefined()
-      })
+      const body = (await result.response.json()) as ApiErrorResponse
+      expect(body.details).toBeDefined()
     }
   })
 
@@ -349,7 +346,7 @@ describe("validateParams", () => {
     }
   })
 
-  it("should handle missing required params", () => {
+  it("should handle missing required params", async () => {
     const params = {
       id: "123e4567-e89b-12d3-a456-426614174000",
     }
@@ -358,14 +355,13 @@ describe("validateParams", () => {
 
     expect(result.success).toBe(false)
     if (!result.success) {
-      result.response.json().then((body: ApiErrorResponse) => {
-        expect(body.error).toBe("BAD_REQUEST")
-        expect(body.details).toBeDefined()
-      })
+      const body = (await result.response.json()) as ApiErrorResponse
+      expect(body.error).toBe("BAD_REQUEST")
+      expect(body.details).toBeDefined()
     }
   })
 
-  it("should include Zod error issues in details", () => {
+  it("should include Zod error issues in details", async () => {
     const params = {
       id: "invalid-id",
       slug: "",
@@ -375,10 +371,9 @@ describe("validateParams", () => {
 
     expect(result.success).toBe(false)
     if (!result.success) {
-      result.response.json().then((body: ApiErrorResponse) => {
-        expect(body.details).toBeDefined()
-        expect(Array.isArray(body.details)).toBe(true)
-      })
+      const body = (await result.response.json()) as ApiErrorResponse
+      expect(body.details).toBeDefined()
+      expect(Array.isArray(body.details)).toBe(true)
     }
   })
 

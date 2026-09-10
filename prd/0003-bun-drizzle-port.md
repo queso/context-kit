@@ -4,7 +4,7 @@ missionId: ~
 
 # Port context-kit to Bun and Drizzle
 
-**Author:** Viv (draft), Josh (owner)  **Date:** 2026-09-09  **Status:** Draft
+**Author:** Viv (draft), Josh (owner)  **Date:** 2026-09-09  **Status:** In progress
 **Tracks:** [queso/context-kit#19](https://github.com/queso/context-kit/issues/19)
 
 ## Executive Summary

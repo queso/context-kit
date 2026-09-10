@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it, type Mock, mock, spyOn } from "bun:test"
 import { render, renderHook, screen, waitFor } from "@testing-library/react"
 import type { SSEConfig } from "reactive-swr"
 import useSWR from "swr"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { Providers, useCorrelationId } from "../providers"
 
 function SWRConsumer() {
@@ -9,14 +9,18 @@ function SWRConsumer() {
   return <div data-testid="swr-consumer">{data ?? "no data"}</div>
 }
 
-const mockUUID = "test-uuid-123" as `${string}-${string}-${string}-${string}-${string}`
+type UUID = ReturnType<typeof crypto.randomUUID>
+
+const mockUUID = "test-uuid-123" as UUID
+
+let randomUUID: Mock<typeof crypto.randomUUID>
 
 beforeEach(() => {
-  vi.spyOn(crypto, "randomUUID").mockReturnValue(mockUUID)
+  randomUUID = spyOn(crypto, "randomUUID").mockReturnValue(mockUUID)
 })
 
 afterEach(() => {
-  vi.restoreAllMocks()
+  mock.restore()
 })
 
 describe("Providers", () => {
@@ -84,10 +88,10 @@ describe("Providers", () => {
     })
 
     it("generates unique correlation IDs for separate Providers instances", () => {
-      const uuid1 = "uuid-instance-1"
-      const uuid2 = "uuid-instance-2"
+      const uuid1 = "uuid-instance-1" as UUID
+      const uuid2 = "uuid-instance-2" as UUID
 
-      vi.mocked(crypto.randomUUID).mockReturnValueOnce(uuid1).mockReturnValueOnce(uuid2)
+      randomUUID.mockReturnValueOnce(uuid1).mockReturnValueOnce(uuid2)
 
       const { result: result1 } = renderHook(() => useCorrelationId(), {
         wrapper: ({ children }) => <Providers>{children}</Providers>,
@@ -138,7 +142,7 @@ describe("Providers", () => {
     })
 
     it("throws error when used outside Providers context", () => {
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+      const consoleSpy = spyOn(console, "error").mockImplementation(() => {})
 
       expect(() => {
         renderHook(() => useCorrelationId())
