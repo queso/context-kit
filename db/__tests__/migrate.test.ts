@@ -362,6 +362,39 @@ describe("runMigrations (postgres advisory lock, stubbed)", () => {
     expect(reserved.release).toHaveBeenCalledTimes(1)
   })
 
+  it("releases the connection even when the unlock statement itself rejects", async () => {
+    const migrationsFolder = makePostgresMigrationsFolder(
+      "lock-unlock-fail",
+      "lock_unlock_fail_test",
+    )
+    const release = mock()
+    const reserved = Object.assign(
+      (strings: TemplateStringsArray, ..._values: unknown[]) =>
+        strings.join("").includes("pg_advisory_unlock")
+          ? Promise.reject(new Error("connection closed"))
+          : Promise.resolve([]),
+      { release },
+    )
+    const stub = {
+      dialect: "postgres",
+      db: {
+        execute: mock()
+          .mockResolvedValueOnce([{ count: "0" }])
+          .mockResolvedValueOnce([{ count: "1" }]),
+        $client: { reserve: () => Promise.resolve(reserved) },
+      },
+      ready: Promise.resolve(),
+    } as unknown as DbInstance
+
+    await expect(
+      runMigrations(stub, {
+        migrationsFolder,
+        migrators: { sqlite: mock(async () => {}), postgres: mock(async () => {}) },
+      }),
+    ).rejects.toThrow("connection closed")
+    expect(release).toHaveBeenCalledTimes(1)
+  })
+
   it("still unlocks and releases the connection when the migrator rejects, and rethrows", async () => {
     const migrationsFolder = makePostgresMigrationsFolder("lock-error", "lock_error_test")
     const order: string[] = []

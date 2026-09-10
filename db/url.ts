@@ -42,7 +42,16 @@ export function parseDatabaseUrl(url: string): ParsedDatabaseUrl {
   if (scheme === "sqlite:") {
     let path = url.slice(scheme.length)
     // `sqlite://./relative` and `sqlite:///abs/path` carry an empty authority; drop the slashes.
-    if (path.startsWith("//")) path = path.slice(2)
+    // Anything else after `//` is a host or credentials, which SQLite cannot open: fail loudly
+    // instead of creating a stray local file named after the host.
+    if (path.startsWith("//")) {
+      path = path.slice(2)
+      if (!(path.startsWith("/") || path.startsWith("./") || path === SQLITE_MEMORY_PATH)) {
+        throw new Error(
+          `${UNSUPPORTED_SCHEME_MESSAGE} (got "${url}": sqlite: URLs point at a local file and cannot carry a host or credentials)`,
+        )
+      }
+    }
     if (path === "") throw new Error(`${UNSUPPORTED_SCHEME_MESSAGE} (got an empty sqlite path)`)
     return { dialect: "sqlite", path }
   }

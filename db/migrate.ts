@@ -89,9 +89,14 @@ async function withPostgresMigrationLock<T>(
   const reserved = await instance.db.$client.reserve()
   try {
     await reserved`select pg_advisory_lock(${MIGRATION_LOCK_KEY})`
-    return await fn()
+    try {
+      return await fn()
+    } finally {
+      await reserved`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`
+    }
   } finally {
-    await reserved`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`
+    // Always hand the connection back, even if locking or unlocking rejected (the server-side
+    // lock dies with the session, but the pool slot would otherwise leak).
     reserved.release()
   }
 }

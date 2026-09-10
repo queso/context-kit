@@ -46,6 +46,13 @@ describe("parseDatabaseUrl", () => {
     expect(() => parseDatabaseUrl("not-a-url")).toThrow(/sqlite:[\s\S]*postgres:/)
   })
 
+  it("rejects a sqlite URL with a host or credentials instead of treating it as a file path", () => {
+    expect(() => parseDatabaseUrl("sqlite://my-db.turso.io/app")).toThrow(
+      /sqlite:\/\/my-db\.turso\.io/,
+    )
+    expect(() => parseDatabaseUrl("sqlite://user:pass@host/db")).toThrow(/local file/)
+  })
+
   it("throws for an empty sqlite path", () => {
     expect(() => parseDatabaseUrl("sqlite:")).toThrow(/empty sqlite path/)
   })
