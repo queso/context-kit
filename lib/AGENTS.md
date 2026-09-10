@@ -4,9 +4,8 @@ This directory contains shared code used across the application.
 
 ## Key Files
 
-- `db.ts` -- Prisma client singleton. Always import `prisma` from `@/lib/db` instead of creating new instances. The singleton prevents connection exhaustion during development hot reloads.
 - `utils.ts` -- Contains the `cn()` function for merging Tailwind CSS classes (uses clsx + tailwind-merge).
-- `generated/prisma/` -- Auto-generated Prisma client. Do not edit. Regenerate with `pnpm db:generate`.
+- The database layer lives in `db/`, not here. Always import `db` from `@/db` instead of creating a second Drizzle instance; see `db/AGENTS.md` for the schema and migration workflow.
 
 ## Conventions
 
