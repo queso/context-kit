@@ -133,7 +133,7 @@ describe("Rate limiting", () => {
   it("should return 429 when rate limit exceeded", async () => {
     getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 2 }))
 
-    // Need a fresh module instance to reset rate limit state
+    // Rate-limit state is reset via resetRateLimiter() in beforeEach.
 
     const makeRequest = async () => {
       const request = new NextRequest(new URL("http://localhost/api/test"), {

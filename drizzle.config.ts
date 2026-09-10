@@ -1,5 +1,5 @@
 import { defineConfig } from "drizzle-kit"
-import { parseDatabaseUrl } from "@/db/url"
+import { parseDatabaseUrl, SQLITE_MEMORY_PATH } from "@/db/url"
 import { getEnv } from "@/lib/env"
 
 // Dialect, schema, and migrations folder all follow DATABASE_URL, so the same config drives
@@ -12,7 +12,10 @@ export default parsed.dialect === "sqlite"
       dialect: "sqlite",
       schema: "./db/schema/sqlite.ts",
       out: "./db/migrations/sqlite",
-      dbCredentials: { url: `file:${parsed.path}` },
+      // Same rule as db/index.ts: `:memory:` is passed bare; everything else becomes a file: URL.
+      dbCredentials: {
+        url: parsed.path === SQLITE_MEMORY_PATH ? SQLITE_MEMORY_PATH : `file:${parsed.path}`,
+      },
     })
   : defineConfig({
       dialect: "postgresql",
