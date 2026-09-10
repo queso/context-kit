@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "bun:test"
 import { getSecurityHeaders } from "@/lib/security-headers"
 
 type SecurityHeader = { key: string; value: string }

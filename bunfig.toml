@@ -1,0 +1,4 @@
+# Bun test runner config. The preload registers a DOM (happy-dom) and jest-dom matchers so
+# React Testing Library component tests run under `bun test`.
+[test]
+preload = ["./test/preload.ts"]

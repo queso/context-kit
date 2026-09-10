@@ -1,18 +1,43 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { fetcher } from "@/lib/fetcher"
+
+// `globalThis.fetch` assignments leak across files (bun runs every test file in one process), so
+// the real fetch is captured here and restored after this file.
+const realFetch = globalThis.fetch
+
+/** Replaces global fetch with a mock that resolves to the given partial Response. */
+function mockFetch(response: Partial<Response>) {
+  const fetchMock = mock(() => Promise.resolve(response as Response))
+  globalThis.fetch = fetchMock as unknown as typeof fetch
+  return fetchMock
+}
+
+/** Awaits a promise that must reject; fails the test if it resolves. */
+async function captureRejection(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise
+  } catch (error) {
+    return error
+  }
+  throw new Error("Expected promise to reject, but it resolved")
+}
+
+afterAll(() => {
+  globalThis.fetch = realFetch
+})
 
 describe("fetcher", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   it("should fetch data without headers", async () => {
     const mockData = { id: 1, name: "Test" }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -29,7 +54,7 @@ describe("fetcher", () => {
       "X-Custom-Header": "value",
       Authorization: "Bearer token",
     }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -42,7 +67,7 @@ describe("fetcher", () => {
 
   it("should fetch data with correlation ID header", async () => {
     const mockData = { id: 1, name: "Test" }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -64,7 +89,7 @@ describe("fetcher", () => {
     ]
 
     for (const { data } of testCases) {
-      global.fetch = vi.fn().mockResolvedValue({
+      mockFetch({
         ok: true,
         json: async () => data,
       })
@@ -87,7 +112,7 @@ describe("fetcher", () => {
         timestamp: "2026-02-16T00:00:00Z",
       },
     }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => complexData,
     })
@@ -97,7 +122,7 @@ describe("fetcher", () => {
   })
 
   it("should throw error with status on 404 response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 404,
     })
@@ -107,23 +132,19 @@ describe("fetcher", () => {
   })
 
   it("should throw error with status on 400 response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 400,
     })
 
-    try {
-      await fetcher("/api/test")
-      expect.fail("Should have thrown")
-    } catch (error) {
-      expect(error).toBeInstanceOf(Error)
-      expect((error as Error & { status: number }).status).toBe(400)
-      expect((error as Error & { status: number }).message).toBe("Fetch failed")
-    }
+    const error = await captureRejection(fetcher("/api/test"))
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error & { status: number }).status).toBe(400)
+    expect((error as Error & { status: number }).message).toBe("Fetch failed")
   })
 
   it("should throw error with status on 401 response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 401,
     })
@@ -135,7 +156,7 @@ describe("fetcher", () => {
   })
 
   it("should throw error with status on 403 response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 403,
     })
@@ -147,22 +168,18 @@ describe("fetcher", () => {
   })
 
   it("should throw error with status on 500 response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 500,
     })
 
-    try {
-      await fetcher("/api/test")
-      expect.fail("Should have thrown")
-    } catch (error) {
-      expect(error).toBeInstanceOf(Error)
-      expect((error as Error & { status: number }).status).toBe(500)
-    }
+    const error = await captureRejection(fetcher("/api/test"))
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error & { status: number }).status).toBe(500)
   })
 
   it("should throw error with status on 502 response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 502,
     })
@@ -174,7 +191,7 @@ describe("fetcher", () => {
   })
 
   it("should throw error with status on 503 response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 503,
     })
@@ -189,7 +206,7 @@ describe("fetcher", () => {
     const urls = ["/api/users", "/api/posts/123", "/api/nested/path/item"]
 
     for (const url of urls) {
-      global.fetch = vi.fn().mockResolvedValue({
+      mockFetch({
         ok: true,
         json: async () => ({ success: true }),
       })
@@ -205,7 +222,7 @@ describe("fetcher", () => {
       Authorization: "Bearer token",
       "X-Custom-Header": "value",
     }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({}),
     })
@@ -216,21 +233,17 @@ describe("fetcher", () => {
   })
 
   it("should throw with proper error shape", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 404,
     })
 
-    try {
-      await fetcher("/api/test")
-      expect.fail("Should have thrown")
-    } catch (error) {
-      expect(error).toBeInstanceOf(Error)
-      const err = error as Error & { status: number }
-      expect(err).toHaveProperty("message")
-      expect(err).toHaveProperty("status")
-      expect(typeof err.message).toBe("string")
-      expect(typeof err.status).toBe("number")
-    }
+    const error = await captureRejection(fetcher("/api/test"))
+    expect(error).toBeInstanceOf(Error)
+    const err = error as Error & { status: number }
+    expect(err).toHaveProperty("message")
+    expect(err).toHaveProperty("status")
+    expect(typeof err.message).toBe("string")
+    expect(typeof err.status).toBe("number")
   })
 })

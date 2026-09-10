@@ -1,19 +1,44 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { ApiErrorResponse } from "@/lib/api"
 import { fetcher, mutationFetcher } from "@/lib/fetcher"
 
+// `globalThis.fetch` assignments leak across files (bun runs every test file in one process), so
+// the real fetch is captured here and restored after this file.
+const realFetch = globalThis.fetch
+
+/** Replaces global fetch with a mock that resolves to the given partial Response. */
+function mockFetch(response: Partial<Response>) {
+  const fetchMock = mock(() => Promise.resolve(response as Response))
+  globalThis.fetch = fetchMock as unknown as typeof fetch
+  return fetchMock
+}
+
+/** Awaits a promise that must reject; fails the test if it resolves. */
+async function captureRejection(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise
+  } catch (error) {
+    return error
+  }
+  throw new Error("Expected promise to reject, but it resolved")
+}
+
+afterAll(() => {
+  globalThis.fetch = realFetch
+})
+
 describe("fetcher (updated with optional headers)", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   it("should fetch data without headers (existing behavior)", async () => {
     const mockData = { id: 1, name: "Test" }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -30,7 +55,7 @@ describe("fetcher (updated with optional headers)", () => {
       "X-Custom-Header": "value",
       Authorization: "Bearer token",
     }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -43,7 +68,7 @@ describe("fetcher (updated with optional headers)", () => {
 
   it("should fetch data with correlation ID header", async () => {
     const mockData = { id: 1, name: "Test" }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -56,7 +81,7 @@ describe("fetcher (updated with optional headers)", () => {
   })
 
   it("should throw error with status on non-OK response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 404,
     })
@@ -66,33 +91,29 @@ describe("fetcher (updated with optional headers)", () => {
   })
 
   it("should preserve existing error handling behavior", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 500,
     })
 
-    try {
-      await fetcher("/api/test")
-      expect.fail("Should have thrown")
-    } catch (error) {
-      expect(error).toBeInstanceOf(Error)
-      expect((error as Error & { status: number }).status).toBe(500)
-    }
+    const error = await captureRejection(fetcher("/api/test"))
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error & { status: number }).status).toBe(500)
   })
 })
 
 describe("mutationFetcher", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.clearAllMocks()
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    mock.restore()
   })
 
   it("should default to POST method when not specified", async () => {
     const mockData = { id: 1, created: true }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -109,7 +130,7 @@ describe("mutationFetcher", () => {
 
   it("should use specified HTTP method (POST)", async () => {
     const mockData = { success: true }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -128,7 +149,7 @@ describe("mutationFetcher", () => {
 
   it("should use specified HTTP method (PUT)", async () => {
     const mockData = { id: 1, updated: true }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -147,7 +168,7 @@ describe("mutationFetcher", () => {
 
   it("should use specified HTTP method (PATCH)", async () => {
     const mockData = { id: 1, updated: true }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -166,7 +187,7 @@ describe("mutationFetcher", () => {
 
   it("should use specified HTTP method (DELETE)", async () => {
     const mockData = { success: true }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -184,7 +205,7 @@ describe("mutationFetcher", () => {
   })
 
   it("should set Content-Type to application/json", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({}),
     })
@@ -205,7 +226,7 @@ describe("mutationFetcher", () => {
 
   it("should JSON-stringify the body", async () => {
     const body = { name: "John", age: 30 }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({}),
     })
@@ -221,7 +242,7 @@ describe("mutationFetcher", () => {
   })
 
   it("should handle requests without body (DELETE)", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({ success: true }),
     })
@@ -238,7 +259,7 @@ describe("mutationFetcher", () => {
 
   it("should return parsed JSON on success", async () => {
     const mockData = { id: 1, name: "John", created: true }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => mockData,
     })
@@ -251,7 +272,7 @@ describe("mutationFetcher", () => {
   })
 
   it("should include X-Correlation-Id header when correlationId is provided", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({}),
     })
@@ -274,7 +295,7 @@ describe("mutationFetcher", () => {
   })
 
   it("should merge custom headers with Content-Type", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({}),
     })
@@ -307,21 +328,19 @@ describe("mutationFetcher", () => {
       message: "Invalid input",
       details: { field: "email" },
     }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 400,
       json: async () => errorBody,
     })
 
-    try {
-      await mutationFetcher("/api/users", { arg: { body: { name: "" } } })
-      expect.fail("Should have thrown")
-    } catch (error) {
-      expect(error).toBeInstanceOf(Error)
-      const err = error as Error & { status: number; body: ApiErrorResponse }
-      expect(err.status).toBe(400)
-      expect(err.body).toEqual(errorBody)
-    }
+    const error = await captureRejection(
+      mutationFetcher("/api/users", { arg: { body: { name: "" } } }),
+    )
+    expect(error).toBeInstanceOf(Error)
+    const err = error as Error & { status: number; body: ApiErrorResponse }
+    expect(err.status).toBe(400)
+    expect(err.body).toEqual(errorBody)
   })
 
   it("should attach ApiErrorResponse shape to thrown error", async () => {
@@ -329,7 +348,7 @@ describe("mutationFetcher", () => {
       error: "NOT_FOUND",
       message: "User not found",
     }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 404,
       json: async () => errorBody,
@@ -344,7 +363,7 @@ describe("mutationFetcher", () => {
   })
 
   it("should provide fallback error body when server returns non-JSON error response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 502,
       json: async () => {
@@ -352,19 +371,17 @@ describe("mutationFetcher", () => {
       },
     })
 
-    try {
-      await mutationFetcher("/api/users", { arg: { body: { name: "John" } } })
-      expect.fail("Should have thrown")
-    } catch (error) {
-      expect(error).toBeInstanceOf(Error)
-      const err = error as Error & { status: number; body: ApiErrorResponse }
-      expect(err.status).toBe(502)
-      expect(err.body).toEqual({
-        error: "UNKNOWN_ERROR",
-        message: "The server returned a non-JSON error response",
-      })
-      expect(err.message).toBe("The server returned a non-JSON error response")
-    }
+    const error = await captureRejection(
+      mutationFetcher("/api/users", { arg: { body: { name: "John" } } }),
+    )
+    expect(error).toBeInstanceOf(Error)
+    const err = error as Error & { status: number; body: ApiErrorResponse }
+    expect(err.status).toBe(502)
+    expect(err.body).toEqual({
+      error: "UNKNOWN_ERROR",
+      message: "The server returned a non-JSON error response",
+    })
+    expect(err.message).toBe("The server returned a non-JSON error response")
   })
 
   it("should handle 500 errors with correlationId in error body", async () => {
@@ -373,24 +390,20 @@ describe("mutationFetcher", () => {
       message: "Database error",
       correlationId: "xyz-789",
     }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: false,
       status: 500,
       json: async () => errorBody,
     })
 
-    try {
-      await mutationFetcher("/api/users", { arg: { body: {} } })
-      expect.fail("Should have thrown")
-    } catch (error) {
-      const err = error as Error & { status: number; body: ApiErrorResponse }
-      expect(err.body.correlationId).toBe("xyz-789")
-    }
+    const error = await captureRejection(mutationFetcher("/api/users", { arg: { body: {} } }))
+    const err = error as Error & { status: number; body: ApiErrorResponse }
+    expect(err.body.correlationId).toBe("xyz-789")
   })
 
   it("should match useSWRMutation fetcher signature", async () => {
     // useSWRMutation calls fetcher with (url, { arg })
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({ success: true }),
     })
@@ -405,7 +418,7 @@ describe("mutationFetcher", () => {
   })
 
   it("should handle empty arg object", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({ success: true }),
     })
@@ -433,7 +446,7 @@ describe("mutationFetcher", () => {
         source: "web",
       },
     }
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({ id: 1 }),
     })
@@ -451,7 +464,7 @@ describe("mutationFetcher", () => {
 
 describe("integration: fetcher and mutationFetcher", () => {
   it("should use fetcher for reads and mutationFetcher for writes", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({ data: "test" }),
     })
@@ -474,7 +487,7 @@ describe("integration: fetcher and mutationFetcher", () => {
   })
 
   it("fetcher and mutationFetcher should both support correlation IDs", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockFetch({
       ok: true,
       json: async () => ({}),
     })

@@ -1,64 +1,51 @@
-import * as nextCache from "next/cache"
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest"
-import { cacheHeaders, revalidateByTag, revalidatePath } from "@/lib/cache"
-import * as logger from "@/lib/logger"
+import { afterAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 
-// Mock next/cache
-vi.mock("next/cache", () => ({
-  revalidateTag: vi.fn(),
-  revalidatePath: vi.fn(),
+// Module mocks are process-global in bun:test, so only next/cache (which nothing else needs for
+// real) is mocked this way. The mock must be registered before @/lib/cache is imported.
+const revalidateTag = mock()
+const nextRevalidatePath = mock()
+mock.module("next/cache", () => ({
+  revalidateTag,
+  revalidatePath: nextRevalidatePath,
 }))
 
-// Mock logger
-vi.mock("@/lib/logger", () => ({
-  getLogger: vi.fn(() => ({
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  })),
-}))
+// Spy on the real logger module rather than replacing it (logger.test.ts needs the real one).
+const loggerMod = await import("@/lib/logger")
+const noopLogger = { info: mock(), error: mock(), warn: mock(), debug: mock() }
+spyOn(loggerMod, "getLogger").mockReturnValue(
+  noopLogger as unknown as ReturnType<typeof loggerMod.getLogger>,
+)
+
+const { cacheHeaders, revalidateByTag, revalidatePath } = await import("@/lib/cache")
+
+afterAll(() => {
+  mock.restore()
+})
 
 describe("revalidateByTag", () => {
-  let mockRevalidateTag: Mock
-
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockRevalidateTag = vi.fn()
-    ;(nextCache.revalidateTag as Mock).mockImplementation(mockRevalidateTag)
-    ;(logger.getLogger as Mock).mockReturnValue({
-      info: vi.fn(),
-      error: vi.fn(),
-    })
+    mock.clearAllMocks()
   })
 
   it("should call Next.js revalidateTag with the provided tag", () => {
     revalidateByTag("posts")
-    expect(mockRevalidateTag).toHaveBeenCalledWith("posts", "default")
+    expect(revalidateTag).toHaveBeenCalledWith("posts", "default")
   })
 })
 
 describe("revalidatePath", () => {
-  let mockRevalidatePath: Mock
-
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockRevalidatePath = vi.fn()
-    ;(nextCache.revalidatePath as Mock).mockImplementation(mockRevalidatePath)
-    ;(logger.getLogger as Mock).mockReturnValue({
-      info: vi.fn(),
-      error: vi.fn(),
-    })
+    mock.clearAllMocks()
   })
 
   it("should call Next.js revalidatePath with path only", () => {
     revalidatePath("/posts")
-    expect(mockRevalidatePath).toHaveBeenCalledWith("/posts", undefined)
+    expect(nextRevalidatePath).toHaveBeenCalledWith("/posts", undefined)
   })
 
   it("should call Next.js revalidatePath with path and type", () => {
     revalidatePath("/dashboard", "page")
-    expect(mockRevalidatePath).toHaveBeenCalledWith("/dashboard", "page")
+    expect(nextRevalidatePath).toHaveBeenCalledWith("/dashboard", "page")
   })
 })
 
@@ -101,9 +88,7 @@ describe("cacheHeaders", () => {
     })
 
     it("should handle staleWhileRevalidate=0", () => {
-      expect(cacheHeaders({ staleWhileRevalidate: 0 })).toBe(
-        "private, stale-while-revalidate=0",
-      )
+      expect(cacheHeaders({ staleWhileRevalidate: 0 })).toBe("private, stale-while-revalidate=0")
     })
   })
 

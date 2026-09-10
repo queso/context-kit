@@ -19,8 +19,11 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
-    }
+      "@/*": ["./*"],
+      "reactive-swr": ["./node_modules/reactive-swr/src/index.ts"]
+    },
+    "allowImportingTsExtensions": true,
+    "types": ["bun", "node"]
   },
   "include": [
     "next-env.d.ts",
