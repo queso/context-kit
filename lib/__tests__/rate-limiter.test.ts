@@ -3,6 +3,7 @@ import {
   checkRateLimit,
   getRateLimitRetryAfter,
   RATE_LIMIT_WINDOW_MS,
+  rateLimiterSize,
   resetRateLimiter,
 } from "@/lib/rate-limiter"
 
@@ -91,5 +92,27 @@ describe("resetRateLimiter", () => {
     resetRateLimiter()
 
     expect(checkRateLimit("1.1.1.1", 1)).toBe(true)
+  })
+})
+
+describe("expired entry eviction", () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  it("drops entries for keys that stopped sending once their window has expired", () => {
+    checkRateLimit("1.1.1.1", 5)
+    checkRateLimit("2.2.2.2", 5)
+    expect(rateLimiterSize()).toBe(2)
+
+    jest.advanceTimersByTime(RATE_LIMIT_WINDOW_MS + 1)
+    // A request from a third key triggers the sweep; the two idle keys are gone.
+    checkRateLimit("3.3.3.3", 5)
+
+    expect(rateLimiterSize()).toBe(1)
   })
 })

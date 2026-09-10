@@ -142,7 +142,7 @@ renovate.json               Renovate config (npm dependency auto-updates)
 - **Test files** are colocated in `__tests__/` directories as `*.test.tsx`. `bun test` registers happy-dom via `test/preload.ts`.
 - **API error responses** use `@/lib/api`. Return `notFound()`, `badRequest()`, etc. -- never construct raw JSON error responses.
 - **Request validation** uses `validateBody`, `validateSearchParams`, `validateParams` from `@/lib/api` with Zod schemas. Always validate before processing.
-- **Middleware** in `middleware.ts` handles CORS, rate limiting, correlation IDs, and request logging for all `/api/*` routes automatically.
+- **Middleware** in `middleware.ts` handles CORS, rate limiting, correlation IDs, and request logging for all `/api/*` routes automatically. The limiter itself lives in `lib/rate-limiter.ts`; middleware calls it.
 - **Correlation IDs** flow from `<Providers>` through SWR fetcher headers to middleware to structured logs. Use `useCorrelationId()` in client components when calling `mutationFetcher`.
 
 ## Data Fetching
@@ -379,7 +379,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 `middleware.ts` runs automatically on all `/api/*` routes. It handles four concerns in order:
 
 1. **CORS** -- Reads `CORS_ORIGIN` from env. If set, adds `Access-Control-Allow-Origin` and related headers. Handles `OPTIONS` preflight with 204. When origin is not `*`, sets `Access-Control-Allow-Credentials: true`.
-2. **Rate limiting** -- In-memory fixed-window rate limiter. Reads `RATE_LIMIT_RPM` from env (default: 60 requests/minute/IP). Returns 429 with `Retry-After` header when exceeded. Use Redis for production distributed rate limiting.
+2. **Rate limiting** -- In-memory fixed-window rate limiter from `lib/rate-limiter.ts` (expired keys are swept on each new window). Reads `RATE_LIMIT_RPM` from env (default: 60 requests/minute/IP). Returns 429 with `Retry-After` header when exceeded. Use Redis for production distributed rate limiting.
 3. **Correlation IDs** -- Reads `X-Correlation-Id` from request header or generates a UUID. Sets it on the response header. Available in logs for request tracing.
 4. **Request logging** -- Logs method, path, status, duration, and correlationId via Pino structured logger.
 

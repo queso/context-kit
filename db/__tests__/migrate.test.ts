@@ -427,7 +427,7 @@ describe("runMigrations (postgres advisory lock, stubbed)", () => {
     expect(release).toHaveBeenCalledTimes(1)
   })
 
-  it("releases the connection even when the unlock statement itself rejects", async () => {
+  it("still succeeds and releases the connection when only the unlock statement rejects", async () => {
     const migrationsFolder = makePostgresMigrationsFolder(
       "lock-unlock-fail",
       "lock_unlock_fail_test",
@@ -456,7 +456,7 @@ describe("runMigrations (postgres advisory lock, stubbed)", () => {
         migrationsFolder,
         migrators: { sqlite: mock(async () => {}), postgres: mock(async () => {}) },
       }),
-    ).rejects.toThrow("connection closed")
+    ).resolves.toBeUndefined()
     expect(release).toHaveBeenCalledTimes(1)
   })
 
