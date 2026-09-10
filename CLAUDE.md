@@ -8,7 +8,7 @@ This is a foundation, not a SaaS boilerplate. There is no auth, no billing, no e
 
 Next.js 16 with App Router, React 19, TypeScript in strict mode, Tailwind CSS v4, shadcn/ui (New York style, lucide icons), Biome for linting and formatting, `bun test` with React Testing Library for tests, Drizzle ORM with SQLite (`@libsql/client`) by default and PostgreSQL optional, SWR for client-side data fetching, reactiveSWR for real-time SSE, Bun for package management, scripts, and tests; Node 24 for the Next server, Docker Compose for local dev, GitHub Actions for CI.
 
-Bun 1.3 (see `.bun-version`, pinned again as `packageManager` in `package.json`). Install it from https://bun.sh. Node 24+ is also required (`engines.node` in `package.json`; no version file is shipped, use any version manager): Bun's runtime cannot build or start Next 16 yet, so `bun run dev`, `build`, and `start` hand the Next process to Node transparently.
+Bun 1.3 (see `.bun-version`, pinned again as `packageManager` in `package.json`). Install it from https://bun.sh. Node 24+ is also required (`engines.node` in `package.json`; unlike Bun there is no `.node-version` file, so use any version manager): Bun's runtime cannot build or start Next 16 yet, so `bun run dev`, `build`, and `start` hand the Next process to Node transparently.
 
 ## Running the Project
 

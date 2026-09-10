@@ -13,6 +13,11 @@ export const config = {
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
 const RATE_LIMIT_WINDOW_MS = 60000 // 60 seconds
 
+/** Clears all rate-limit state. Exists so tests can reset the in-memory limiter between cases. */
+export function resetRateLimiter(): void {
+  rateLimitMap.clear()
+}
+
 function getClientIp(request: NextRequest): string {
   const forwardedFor = request.headers.get("X-Forwarded-For")
   if (forwardedFor) {

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, jest, mock, spyOn } from "bun:test"
 import { NextRequest } from "next/server"
+import { config, middleware, resetRateLimiter, runtime } from "../middleware"
 
 type Env = ReturnType<typeof import("@/lib/env").getEnv>
-type MiddlewareModule = typeof import("../middleware")
 
 /** Default mock env values satisfying the full Env shape */
 const defaultMockEnv: Env = {
@@ -27,6 +27,8 @@ const loggerMod = await import("@/lib/logger")
 let getEnv: ReturnType<typeof spyOn<typeof envMod, "getEnv">>
 
 beforeEach(() => {
+  // The limiter is module-level state; reset it explicitly rather than re-importing the module.
+  resetRateLimiter()
   getEnv = spyOn(envMod, "getEnv").mockReturnValue(defaultMockEnv)
   const noopLogger = { info: mock(), error: mock(), warn: mock(), debug: mock() }
   spyOn(loggerMod, "getLogger").mockReturnValue(
@@ -38,30 +40,17 @@ afterEach(() => {
   mock.restore()
 })
 
-// bun:test has no resetModules; a cache-busting query yields a distinct module instance with
-// fresh in-memory rate limiter state. Every test that issues a request through middleware(...)
-// uses this so limiter state never crosses tests; only the "middleware exports" tests, which
-// merely inspect exports, use a plain import.
-let freshImportCount = 0
-async function freshMiddleware(): Promise<MiddlewareModule> {
-  freshImportCount++
-  return import(`../middleware?fresh=${freshImportCount}`)
-}
-
 describe("middleware exports", () => {
   it("should export middleware function", async () => {
-    const { middleware } = await import("../middleware")
     expect(typeof middleware).toBe("function")
   })
 
   it("should export config with API matcher", async () => {
-    const { config } = await import("../middleware")
     expect(config).toBeDefined()
     expect(config.matcher).toEqual(["/api/:path*"])
   })
 
   it("should export runtime as nodejs", async () => {
-    const { runtime } = await import("../middleware")
     expect(runtime).toBe("nodejs")
   })
 })
@@ -70,7 +59,6 @@ describe("CORS handling", () => {
   it("should NOT set Access-Control-Allow-Origin when CORS_ORIGIN is empty", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -80,7 +68,6 @@ describe("CORS handling", () => {
   it("should set CORS headers when CORS_ORIGIN is set", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -92,7 +79,6 @@ describe("CORS handling", () => {
   it("should set Access-Control-Allow-Credentials when CORS_ORIGIN is specific origin", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -102,7 +88,6 @@ describe("CORS handling", () => {
   it("should NOT set Access-Control-Allow-Credentials when CORS_ORIGIN is wildcard", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "*" }))
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -113,7 +98,6 @@ describe("CORS handling", () => {
   it("should handle OPTIONS preflight with 204 and CORS headers", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       method: "OPTIONS",
     })
@@ -138,7 +122,6 @@ describe("Rate limiting", () => {
   it("should allow requests under rate limit", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       headers: { "X-Forwarded-For": "192.168.1.1" },
     })
@@ -151,7 +134,6 @@ describe("Rate limiting", () => {
     getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 2 }))
 
     // Need a fresh module instance to reset rate limit state
-    const { middleware } = await freshMiddleware()
 
     const makeRequest = async () => {
       const request = new NextRequest(new URL("http://localhost/api/test"), {
@@ -172,8 +154,6 @@ describe("Rate limiting", () => {
   it("should return ApiErrorResponse shape on 429", async () => {
     getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 1 }))
 
-    const { middleware } = await freshMiddleware()
-
     const request1 = new NextRequest(new URL("http://localhost/api/test"), {
       headers: { "X-Forwarded-For": "192.168.1.1" },
     })
@@ -193,8 +173,6 @@ describe("Rate limiting", () => {
   it("should include Retry-After header on 429", async () => {
     getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 1 }))
 
-    const { middleware } = await freshMiddleware()
-
     const makeRequest = async () => {
       const request = new NextRequest(new URL("http://localhost/api/test"), {
         headers: { "X-Forwarded-For": "192.168.1.1" },
@@ -211,8 +189,6 @@ describe("Rate limiting", () => {
 
   it("should use X-Forwarded-For for IP identification", async () => {
     getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 2 }))
-
-    const { middleware } = await freshMiddleware()
 
     // Different IPs should have separate rate limits
     const request1 = new NextRequest(new URL("http://localhost/api/test"), {
@@ -232,7 +208,6 @@ describe("Rate limiting", () => {
   it("should fall back to unknown IP when X-Forwarded-For is missing", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -241,8 +216,6 @@ describe("Rate limiting", () => {
 
   it("should reset rate limit window after 60 seconds", async () => {
     getEnv.mockReturnValue(mockEnv({ RATE_LIMIT_RPM: 1 }))
-
-    const { middleware } = await freshMiddleware()
 
     const makeRequest = async () => {
       const request = new NextRequest(new URL("http://localhost/api/test"), {
@@ -272,7 +245,6 @@ describe("Correlation ID", () => {
   it("should pass through existing X-Correlation-Id from request", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       headers: { "X-Correlation-Id": "existing-123" },
     })
@@ -284,7 +256,6 @@ describe("Correlation ID", () => {
   it("should generate UUID when X-Correlation-Id is missing", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -299,7 +270,6 @@ describe("Correlation ID", () => {
   it("should set X-Correlation-Id on response", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -313,7 +283,6 @@ describe("Error handling", () => {
       throw new Error("Environment validation failed")
     })
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -329,7 +298,6 @@ describe("Error handling", () => {
       throw new Error("Environment validation failed")
     })
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -342,7 +310,6 @@ describe("Integration scenarios", () => {
   it("should handle complete request flow with all features", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       headers: {
         "X-Forwarded-For": "192.168.1.1",
@@ -365,7 +332,6 @@ describe("Integration scenarios", () => {
   it("should handle POST request with body", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/users"), {
       method: "POST",
       body: JSON.stringify({ name: "John" }),
