@@ -73,6 +73,9 @@ jobs:
               (.patch // "@@ patch omitted by GitHub (\(.status), +\(.additions)/-\(.deletions)) @@")' \
               > diff.patch
           fi
+          # A failed fallback (rate limit, transient 5xx) leaves diff.patch empty while the step
+          # exits 0, and the flow would then post a clean review of nothing. Fail loudly instead.
+          [ -s diff.patch ] || { echo "::error::diff fetch failed; diff.patch is empty"; cat diff.err 2>/dev/null; exit 1; }
           rm -f diff.err
           # SAFETY VALVE, applied to BOTH paths. Per-prompt sizing is no longer this cap's job:
           # the shard planner owns it — each reviewer child's prompt carries only its shard's
