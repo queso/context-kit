@@ -2,3 +2,11 @@ node_modules
 .next
 .git
 .env
+.env.local
+.env.*.local
+data
+coverage
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
