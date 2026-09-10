@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, mock, spyOn } from "bun:test"
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 import { createHash } from "node:crypto"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -9,13 +9,17 @@ import { runMigrations, runMigrationsOrExit } from "@/db/migrate"
 
 // Spy on the real logger module (module mocks are process-global in bun:test and would leak
 // into other test files). Named imports inside migrate.ts see the spy. See __tests__/middleware.test.ts.
+// The spy is re-created before every test and restored after, per the documented convention.
 const loggerMod = await import("@/lib/logger")
 const noopLogger = { info: mock(), error: mock(), warn: mock(), debug: mock() }
-spyOn(loggerMod, "getLogger").mockReturnValue(
-  noopLogger as unknown as ReturnType<typeof loggerMod.getLogger>,
-)
 
-afterAll(() => {
+beforeEach(() => {
+  spyOn(loggerMod, "getLogger").mockReturnValue(
+    noopLogger as unknown as ReturnType<typeof loggerMod.getLogger>,
+  )
+})
+
+afterEach(() => {
   mock.restore()
 })
 
@@ -388,6 +392,39 @@ describe("runMigrations (postgres advisory lock, stubbed)", () => {
 
     expect(order).toEqual(["lock", "migrate", "unlock"])
     expect(reserved.release).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports the migration error, not the unlock error, when both fail", async () => {
+    const migrationsFolder = makePostgresMigrationsFolder("lock-both-fail", "lock_both_fail_test")
+    const release = mock()
+    const reserved = Object.assign(
+      (strings: TemplateStringsArray, ..._values: unknown[]) =>
+        strings.join("").includes("pg_advisory_unlock")
+          ? Promise.reject(new Error("connection closed"))
+          : Promise.resolve([]),
+      { release },
+    )
+    const stub = {
+      dialect: "postgres",
+      db: {
+        execute: mock().mockResolvedValueOnce([{ count: "0" }]),
+        $client: { reserve: () => Promise.resolve(reserved) },
+      },
+      ready: Promise.resolve(),
+    } as unknown as DbInstance
+
+    await expect(
+      runMigrations(stub, {
+        migrationsFolder,
+        migrators: {
+          sqlite: mock(async () => {}),
+          postgres: mock(async () => {
+            throw new Error("migration failed")
+          }),
+        },
+      }),
+    ).rejects.toThrow("migration failed")
+    expect(release).toHaveBeenCalledTimes(1)
   })
 
   it("releases the connection even when the unlock statement itself rejects", async () => {

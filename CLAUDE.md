@@ -106,6 +106,7 @@ lib/                        Shared utilities
   env.ts                    Zod environment validation (DATABASE_URL, LOG_LEVEL, SITE_URL, CORS_ORIGIN, RATE_LIMIT_RPM)
   fetcher.ts                Typed fetch wrapper for SWR and mutations
   logger.ts                 Pino structured logging (createLogger, getLogger, logger)
+  rate-limiter.ts           In-memory fixed-window rate limiter (checkRateLimit, getRateLimitRetryAfter)
   security-headers.ts       Security headers (CSP, HSTS, etc.)
   sse.ts                    Server-side SSE stream utility (createSSEStream)
   utils.ts                  cn() helper for Tailwind class merging

@@ -36,13 +36,20 @@ export type DbInstance =
   | ({ dialect: "postgres"; db: PostgresDb } & InstanceBase)
 
 /**
- * Wraps a raw libsql `Client` so every query-executing method waits for `ready` before
- * delegating to the raw client. `close`/`reconnect`/`closed`/`protocol` pass through unchanged
- * since they don't touch the database and closing must not be blocked on pragma setup.
+ * Wraps a raw libsql `Client` so every query-executing method waits for the current readiness
+ * promise before delegating to the raw client. `currentReady` is read at call time (not
+ * captured once) so a promise swapped in after `reconnect()` is picked up by the next query.
+ * `close`/`closed`/`protocol` pass through unchanged since they don't touch pragma setup.
+ * `reconnect()` delegates to `onReconnect` in addition to the raw client so the caller can
+ * reapply connection-scoped setup that a reopened connection drops.
  */
-function withReadyGuard(client: Client, ready: Promise<void>): Client {
+function withReadyGuard(
+  client: Client,
+  currentReady: () => Promise<void>,
+  onReconnect: () => void,
+): Client {
   async function guarded<T>(run: () => Promise<T>): Promise<T> {
-    await ready
+    await currentReady()
     return run()
   }
 
@@ -72,6 +79,7 @@ function withReadyGuard(client: Client, ready: Promise<void>): Client {
     },
     reconnect() {
       client.reconnect()
+      onReconnect()
     },
     get closed() {
       return client.closed
@@ -93,31 +101,56 @@ function createSqliteInstance(path: string): DbInstance {
 
   // libsql's execute is async, so pragmas cannot run synchronously on open. Pragmas must run on
   // the raw client: running them through the ready-guarded client below would deadlock (the
-  // guard awaits `ready`, and `ready` awaits the pragma queries).
-  const ready = (async () => {
-    // WAL lets readers proceed during writes; in-memory databases always report "memory".
-    if (!inMemory) await rawClient.execute("PRAGMA journal_mode=WAL")
-    // Wait up to 5s on a locked database instead of failing immediately with SQLITE_BUSY.
-    await rawClient.execute("PRAGMA busy_timeout=5000")
-  })()
-  // Nothing awaits `ready` unless it's assigned to the instance or ping()/runMigrations() are
+  // guard awaits the current readiness promise, and that promise awaits the pragma queries).
+  //
+  // `busy_timeout` is connection-scoped: `@libsql/client`'s file/sqlite3 client keeps a small
+  // pool of connections, and `reconnect()` closes every connection in that pool before the next
+  // query opens a fresh one, which starts with SQLite's default (no) busy timeout. `applyPragmas`
+  // is re-run after every `reconnect()` so a reopened connection gets the timeout back.
+  // `journal_mode=WAL` is persisted in the database file itself, so it survives a reconnect on
+  // its own, but re-running it here is harmless and keeps the pragma list in one place.
+  function applyPragmas(): Promise<void> {
+    return (async () => {
+      // WAL lets readers proceed during writes; in-memory databases always report "memory".
+      if (!inMemory) await rawClient.execute("PRAGMA journal_mode=WAL")
+      // Wait up to 5s on a locked database instead of failing immediately with SQLITE_BUSY.
+      await rawClient.execute("PRAGMA busy_timeout=5000")
+    })()
+  }
+
+  // `current` always holds the in-flight (or most recently settled) setup promise. Reading it
+  // through `currentReady()`/the `ready` getter below (rather than closing over a single promise)
+  // means a promise swapped in after `reconnect()` is what queries and callers actually wait on.
+  let current = applyPragmas()
+  // Nothing awaits `current` unless it's assigned to the instance or ping()/runMigrations() are
   // called. Attach a no-op catch so a pragma failure doesn't surface as an unhandled rejection;
-  // the original promise below still rejects for anyone who does await it.
-  ready.catch(() => {})
+  // the promise returned by `currentReady()`/`ready` still rejects for anyone who does await it.
+  current.catch(() => {})
 
   // Every query issued through `db` or `db.$client` waits for the pragmas above before running,
-  // so request handlers that never call `await ready()` still get WAL mode and the busy timeout.
-  // `ready` stays exported on the instance for callers (ping(), runMigrations()) that want to
-  // fail fast on connection setup rather than on their first query.
-  const client = withReadyGuard(rawClient, ready)
+  // so request handlers that never call `await ready` still get WAL mode and the busy timeout.
+  // On `reconnect()`, replace `current` with a fresh `applyPragmas()` call so the next query
+  // waits for the reopened connection's setup instead of the original (already-settled) promise.
+  const client = withReadyGuard(
+    rawClient,
+    () => current,
+    () => {
+      current = applyPragmas()
+      current.catch(() => {})
+    },
+  )
   const db = drizzleSqlite(client, { schema: sqliteSchema })
 
   return {
     dialect: "sqlite",
     db,
-    ready,
+    // A getter (not a plain field) so callers -- including `withEviction`'s wrapper below --
+    // observe the promise `reconnect()` swaps in, not the one that existed at construction time.
+    get ready() {
+      return current
+    },
     async ping() {
-      await ready
+      await current
       await db.run(sql`select 1`)
     },
     async close() {
@@ -162,6 +195,11 @@ export function createDb(url: string): DbInstance {
  * connection has actually closed. Without this, a caller that awaits `close()` and then touches
  * `db`/`getDb()`/`getInstance()` again gets the same closed instance back, and every subsequent
  * query fails instead of transparently reconnecting.
+ *
+ * `ready` is redefined as a getter forwarding to `instance.ready` rather than left to the object
+ * spread below: a plain spread reads `instance.ready` once, at wrap time, and would freeze the
+ * wrapper on whatever promise was current then -- masking any later swap (e.g. after a SQLite
+ * `reconnect()`) behind a stale, already-settled promise.
  */
 function withEviction(instance: DbInstance, evict: () => void): DbInstance {
   async function close(): Promise<void> {
@@ -169,7 +207,21 @@ function withEviction(instance: DbInstance, evict: () => void): DbInstance {
     evict()
   }
 
-  return instance.dialect === "sqlite" ? { ...instance, close } : { ...instance, close }
+  return instance.dialect === "sqlite"
+    ? {
+        ...instance,
+        close,
+        get ready() {
+          return instance.ready
+        },
+      }
+    : {
+        ...instance,
+        close,
+        get ready() {
+          return instance.ready
+        },
+      }
 }
 
 // ---------------------------------------------------------------------------------------------

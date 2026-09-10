@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest, mock, spyOn } from "bun:test"
 import { NextRequest } from "next/server"
-import { config, middleware, resetRateLimiter, runtime } from "../middleware"
+import { resetRateLimiter } from "@/lib/rate-limiter"
+import { config, middleware, runtime } from "../middleware"
 
 type Env = ReturnType<typeof import("@/lib/env").getEnv>
 

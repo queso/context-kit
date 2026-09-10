@@ -72,6 +72,21 @@ describe("createDb (sqlite ready guard)", () => {
     const result = await instance.db.run(sql`select 1`)
     expect(result).toBeDefined()
   })
+
+  it("reapplies the busy_timeout pragma after reconnect() drops the connection", async () => {
+    const path = join(tempRoot, "reconnect-pragma", "t.sqlite")
+    const instance = open(`sqlite:${path}`)
+    if (instance.dialect !== "sqlite") throw new Error("expected a sqlite instance")
+
+    await instance.ready
+    expect(await pragma(instance, "busy_timeout")).toBe(5000)
+
+    instance.db.$client.reconnect()
+
+    // Deliberately not awaiting instance.ready here: db.$client must reapply the pragma itself.
+    const result = await instance.db.$client.execute("PRAGMA busy_timeout")
+    expect(result.rows[0]?.[0]).toBe(5000)
+  })
 })
 
 describe("createDb (postgres)", () => {

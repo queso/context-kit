@@ -91,13 +91,22 @@ async function withPostgresMigrationLock<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const reserved = await instance.db.$client.reserve()
+  const unlock = () => reserved`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`
   try {
     await reserved`select pg_advisory_lock(${MIGRATION_LOCK_KEY})`
+    let result: T
     try {
-      return await fn()
-    } finally {
-      await reserved`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`
+      result = await fn()
+    } catch (error) {
+      // A failed unlock must not hide the migration error the operator actually needs to see; the
+      // server drops the lock when the reserved session is released below anyway.
+      await unlock().catch((unlockError: unknown) => {
+        getLogger().warn({ error: unlockError }, "Failed to release the migration advisory lock")
+      })
+      throw error
     }
+    await unlock()
+    return result
   } finally {
     // Always hand the connection back, even if locking or unlocking rejected (the server-side
     // lock dies with the session, but the pool slot would otherwise leak).
