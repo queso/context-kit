@@ -276,6 +276,34 @@ describe("runMigrations (postgres error shapes)", () => {
     expect(postgresMigrator).toHaveBeenCalledWith(stub.db, { migrationsFolder })
   })
 
+  it("does not treat a missing database (3D000) as fresh even though the message says 'does not exist'", async () => {
+    const migrationsFolder = makePostgresMigrationsFolder("missing-db", "missing_db_test")
+    const cause = Object.assign(new Error('database "context_kit" does not exist'), {
+      code: "3D000",
+    })
+    const error = wrappedQueryError(
+      "select count(*) as count from drizzle.__drizzle_migrations",
+      cause,
+    )
+    const stub = {
+      dialect: "postgres",
+      db: {
+        execute: () => Promise.reject(error),
+        $client: { reserve: () => Promise.resolve(makeFakeReserved([])) },
+      },
+      ready: Promise.resolve(),
+    } as unknown as DbInstance
+    const postgresMigrator = mock(async () => {})
+
+    await expect(
+      runMigrations(stub, {
+        migrationsFolder,
+        migrators: { sqlite: mock(async () => {}), postgres: postgresMigrator },
+      }),
+    ).rejects.toThrow("Failed query")
+    expect(postgresMigrator).not.toHaveBeenCalled()
+  })
+
   it("propagates a non-missing-table error wrapped by drizzle instead of treating it as zero rows", async () => {
     const migrationsFolder = makePostgresMigrationsFolder("auth-failure", "auth_failure_test")
     const cause = Object.assign(new Error("password authentication failed"), { code: "28P01" })
