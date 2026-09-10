@@ -10,6 +10,12 @@
 #   Postgres is published on the host at ${POSTGRES_PORT:-5432}; set POSTGRES_PORT when
 #   another Postgres already owns 5432.
 #
+# The app container runs as the unprivileged `node` user (1000:1000). The source tree is
+# bind-mounted at /app, so on a Linux host whose user is not 1000 the container cannot write
+# next-env.d.ts into it; rebuild with your own ids (shells reserve the names UID and GID):
+#   APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build
+# Docker Desktop and OrbStack map file ownership for you, so macOS and Windows need nothing.
+#
 # The `app` service has no depends_on so the default lane stays single-container.
 # In the Postgres lane the app fails fast if Postgres is not accepting connections
 # yet; `restart: unless-stopped` retries it until the healthcheck passes.
@@ -19,6 +25,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UID: ${APP_UID:-1000}
+        GID: ${APP_GID:-1000}
     restart: unless-stopped
     ports:
       - "3000:3000"
