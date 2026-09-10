@@ -121,6 +121,7 @@ public/                     Static assets
   dependabot.yml            Dependabot config (GitHub Actions updates only)
   workflows/
     ci.yml                  GitHub Actions: typecheck, lint, test on PRs (SQLite + Postgres jobs)
+    pr-review.yml           GitHub Actions: AI PR review via nitpick-flow (needs FIREWORKS_AI_API_KEY secret + GHCR package read grant)
 .bun-version                Bun version pin (also `packageManager` in package.json)
 bun.lock                    Bun lockfile (committed)
 bunfig.toml                 Bun test runner config (preload)
