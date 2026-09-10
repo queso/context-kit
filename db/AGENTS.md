@@ -9,7 +9,7 @@
 ## Workflow
 
 1. Edit `schema/<dialect>.ts` to add or modify tables.
-2. Run `bun run db:generate` to write a plain-SQL migration under `migrations/<dialect>/`.
+2. Run `bun run db:generate` to write a plain-SQL migration under `db/migrations/<dialect>/`.
 3. Review the generated SQL, then run `bun run db:migrate` to apply it. The server also applies pending migrations at start (`instrumentation.ts`) and exits if one fails.
 
 Use `bun run db:push` for quick prototyping (pushes schema changes without creating a migration file).

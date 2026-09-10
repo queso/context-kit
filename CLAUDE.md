@@ -139,7 +139,7 @@ renovate.json               Renovate config (npm dependency auto-updates)
 - **Schema modules** are dialect-specific: `db/schema/sqlite.ts` and `db/schema/postgres.ts`. Edit the one your `DATABASE_URL` selects and import tables from it. Both files must exist because `db/index.ts` imports both; leave the unused one as the empty template. See `db/AGENTS.md`.
 - **shadcn/ui components** go in `components/ui/`. Add them with `bunx shadcn add <component>`.
 - **`cn()` utility** in `lib/utils.ts` for merging Tailwind classes. Use it in component className props.
-- **Test files** are colocated in `__tests__/` directories as `*.test.tsx`. `bun test` registers happy-dom via `test/preload.ts`.
+- **Test files** are colocated in `__tests__/` directories as `*.test.ts` or `*.test.tsx`. `bun test` registers happy-dom via `test/preload.ts`.
 - **API error responses** use `@/lib/api`. Return `notFound()`, `badRequest()`, etc. -- never construct raw JSON error responses.
 - **Request validation** uses `validateBody`, `validateSearchParams`, `validateParams` from `@/lib/api` with Zod schemas. Always validate before processing.
 - **Middleware** in `middleware.ts` handles CORS, rate limiting, correlation IDs, and request logging for all `/api/*` routes automatically. The limiter itself lives in `lib/rate-limiter.ts`; middleware calls it.
@@ -379,7 +379,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 `middleware.ts` runs automatically on all `/api/*` routes. It handles four concerns in order:
 
 1. **CORS** -- Reads `CORS_ORIGIN` from env. If set, adds `Access-Control-Allow-Origin` and related headers. Handles `OPTIONS` preflight with 204. When origin is not `*`, sets `Access-Control-Allow-Credentials: true`.
-2. **Rate limiting** -- In-memory fixed-window rate limiter from `lib/rate-limiter.ts` (expired keys are swept on each new window). Reads `RATE_LIMIT_RPM` from env (default: 60 requests/minute/IP). Returns 429 with `Retry-After` header when exceeded. Use Redis for production distributed rate limiting.
+2. **Rate limiting** -- In-memory fixed-window rate limiter from `lib/rate-limiter.ts` (expired keys are swept on each new window). Reads `RATE_LIMIT_RPM` from env (default: 60 requests/minute/IP). Returns 429 with `Retry-After` header when exceeded. Clients are keyed on the first `X-Forwarded-For` address, which is only trustworthy behind a proxy that overwrites that header; exposed directly to the internet, a client can spoof it. Use Redis for production distributed rate limiting.
 3. **Correlation IDs** -- Reads `X-Correlation-Id` from request header or generates a UUID. Sets it on the response header. Available in logs for request tracing.
 4. **Request logging** -- Logs method, path, status, duration, and correlationId via Pino structured logger.
 
@@ -451,7 +451,7 @@ Validated at runtime by `lib/env.ts` using Zod. Access via `getEnv()` from `@/li
 
 - Framework: `bun test` + React Testing Library + jest-dom matchers.
 - Setup file: `test/preload.ts`, preloaded via `bunfig.toml`. It registers happy-dom, restores Bun's native `fetch`/`Response`/streams on top of it, adds the jest-dom matchers, and runs RTL `cleanup()` after each test.
-- Test pattern: `**/*.test.{ts,tsx}`.
+- Test pattern: `**/*.test.{ts,tsx}` by convention. `bun test` itself also discovers `*.spec.*` and `*_test.*` files, so do not use those names for non-test modules.
 - Import `describe`, `it`, `expect`, `mock`, `spyOn`, and `jest` from `bun:test`. There are no test globals.
 - Run `bun test` before committing. CI runs the same check.
 
