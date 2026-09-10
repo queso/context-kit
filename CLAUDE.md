@@ -108,6 +108,7 @@ public/                     Static assets
   dependabot.yml            Dependabot config (GitHub Actions updates only)
   workflows/
     ci.yml                  GitHub Actions: typecheck, lint, test on PRs
+    pr-review.yml           GitHub Actions: AI PR review via nitpick-flow (needs FIREWORKS_AI_API_KEY secret + GHCR package read grant)
 middleware.ts                Next.js middleware (CORS, rate limiting, correlation IDs, request logging)
 renovate.json               Renovate config (npm dependency auto-updates)
 ```
