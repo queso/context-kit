@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { sql } from "drizzle-orm"
 import { createDb, type DbInstance } from "@/db"
 
 const tempRoot = mkdtempSync(join(tmpdir(), "context-kit-db-"))
@@ -49,6 +50,27 @@ describe("createDb (sqlite)", () => {
     const memory = open("sqlite::memory:")
     expect(await pragma(memory, "journal_mode")).toBe("memory")
     await expect(memory.ping()).resolves.toBeUndefined()
+  })
+})
+
+describe("createDb (sqlite ready guard)", () => {
+  it("applies the busy_timeout pragma before the first query even if ready is never awaited", async () => {
+    const path = join(tempRoot, "unready-pragma", "t.sqlite")
+    const instance = open(`sqlite:${path}`)
+    if (instance.dialect !== "sqlite") throw new Error("expected a sqlite instance")
+
+    // Deliberately not awaiting instance.ready here: db.$client must guarantee it internally.
+    const result = await instance.db.$client.execute("PRAGMA busy_timeout")
+    expect(result.rows[0]?.[0]).toBe(5000)
+  })
+
+  it("lets a Drizzle query run immediately without the caller awaiting ready", async () => {
+    const path = join(tempRoot, "unready-query", "t.sqlite")
+    const instance = open(`sqlite:${path}`)
+    if (instance.dialect !== "sqlite") throw new Error("expected a sqlite instance")
+
+    const result = await instance.db.run(sql`select 1`)
+    expect(result).toBeDefined()
   })
 })
 

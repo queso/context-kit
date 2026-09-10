@@ -33,7 +33,9 @@ afterAll(() => {
 })
 
 // bun:test has no resetModules; a cache-busting query yields a distinct module instance with
-// fresh in-memory rate limiter state.
+// fresh in-memory rate limiter state. Every test that issues a request through middleware(...)
+// uses this so limiter state never crosses tests; only the "middleware exports" tests, which
+// merely inspect exports, use a plain import.
 let freshImportCount = 0
 async function freshMiddleware(): Promise<MiddlewareModule> {
   freshImportCount++
@@ -66,7 +68,7 @@ describe("CORS handling", () => {
   it("should NOT set Access-Control-Allow-Origin when CORS_ORIGIN is empty", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -76,7 +78,7 @@ describe("CORS handling", () => {
   it("should set CORS headers when CORS_ORIGIN is set", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -88,7 +90,7 @@ describe("CORS handling", () => {
   it("should set Access-Control-Allow-Credentials when CORS_ORIGIN is specific origin", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -98,7 +100,7 @@ describe("CORS handling", () => {
   it("should NOT set Access-Control-Allow-Credentials when CORS_ORIGIN is wildcard", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "*" }))
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
     const response = await middleware(request)
 
@@ -109,7 +111,7 @@ describe("CORS handling", () => {
   it("should handle OPTIONS preflight with 204 and CORS headers", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       method: "OPTIONS",
     })
@@ -135,7 +137,7 @@ describe("Rate limiting", () => {
   it("should allow requests under rate limit", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       headers: { "X-Forwarded-For": "192.168.1.1" },
     })
@@ -229,7 +231,7 @@ describe("Rate limiting", () => {
   it("should fall back to unknown IP when X-Forwarded-For is missing", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -273,7 +275,7 @@ describe("Correlation ID", () => {
   it("should pass through existing X-Correlation-Id from request", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       headers: { "X-Correlation-Id": "existing-123" },
     })
@@ -285,7 +287,7 @@ describe("Correlation ID", () => {
   it("should generate UUID when X-Correlation-Id is missing", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -300,7 +302,7 @@ describe("Correlation ID", () => {
   it("should set X-Correlation-Id on response", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"))
 
     const response = await middleware(request)
@@ -351,7 +353,7 @@ describe("Integration scenarios", () => {
   it("should handle complete request flow with all features", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/test"), {
       headers: {
         "X-Forwarded-For": "192.168.1.1",
@@ -374,7 +376,7 @@ describe("Integration scenarios", () => {
   it("should handle POST request with body", async () => {
     getEnv.mockReturnValue(mockEnv())
 
-    const { middleware } = await import("../middleware")
+    const { middleware } = await freshMiddleware()
     const request = new NextRequest(new URL("http://localhost/api/users"), {
       method: "POST",
       body: JSON.stringify({ name: "John" }),

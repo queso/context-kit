@@ -1,9 +1,11 @@
 import { defineConfig } from "drizzle-kit"
-import { DEFAULT_SQLITE_URL, parseDatabaseUrl } from "@/db/url"
+import { parseDatabaseUrl } from "@/db/url"
+import { getEnv } from "@/lib/env"
 
 // Dialect, schema, and migrations folder all follow DATABASE_URL, so the same config drives
-// `drizzle-kit generate|push|studio` for either database.
-const parsed = parseDatabaseUrl(process.env.DATABASE_URL ?? DEFAULT_SQLITE_URL)
+// `drizzle-kit generate|push|studio` for either database. Going through getEnv() keeps the
+// production rule (DATABASE_URL required) so a production `db:push` cannot fall back to SQLite.
+const parsed = parseDatabaseUrl(getEnv().DATABASE_URL)
 
 export default parsed.dialect === "sqlite"
   ? defineConfig({

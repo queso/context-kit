@@ -1,6 +1,12 @@
 import { mkdirSync } from "node:fs"
 import { dirname } from "node:path"
-import { type Client, createClient } from "@libsql/client"
+import {
+  type Client,
+  createClient,
+  type InArgs,
+  type InStatement,
+  type TransactionMode,
+} from "@libsql/client"
 import { sql } from "drizzle-orm"
 import { drizzle as drizzleSqlite, type LibSQLDatabase } from "drizzle-orm/libsql"
 import { drizzle as drizzlePostgres, type PostgresJsDatabase } from "drizzle-orm/postgres-js"
@@ -29,6 +35,53 @@ export type DbInstance =
   | ({ dialect: "sqlite"; db: SqliteDb } & InstanceBase)
   | ({ dialect: "postgres"; db: PostgresDb } & InstanceBase)
 
+/**
+ * Wraps a raw libsql `Client` so every query-executing method waits for `ready` before
+ * delegating to the raw client. `close`/`reconnect`/`closed`/`protocol` pass through unchanged
+ * since they don't touch the database and closing must not be blocked on pragma setup.
+ */
+function withReadyGuard(client: Client, ready: Promise<void>): Client {
+  async function guarded<T>(run: () => Promise<T>): Promise<T> {
+    await ready
+    return run()
+  }
+
+  return {
+    execute(stmtOrSql: InStatement | string, args?: InArgs) {
+      return guarded(() =>
+        typeof stmtOrSql === "string" ? client.execute(stmtOrSql, args) : client.execute(stmtOrSql),
+      )
+    },
+    batch(stmts, mode) {
+      return guarded(() => client.batch(stmts, mode))
+    },
+    migrate(stmts) {
+      return guarded(() => client.migrate(stmts))
+    },
+    transaction(mode?: TransactionMode) {
+      return guarded(() => (mode === undefined ? client.transaction() : client.transaction(mode)))
+    },
+    executeMultiple(sqlText) {
+      return guarded(() => client.executeMultiple(sqlText))
+    },
+    sync() {
+      return guarded(() => client.sync())
+    },
+    close() {
+      client.close()
+    },
+    reconnect() {
+      client.reconnect()
+    },
+    get closed() {
+      return client.closed
+    },
+    get protocol() {
+      return client.protocol
+    },
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // SQLite (`@libsql/client`). Kept in one function so swapping drivers touches only this block.
 // ---------------------------------------------------------------------------------------------
@@ -36,17 +89,28 @@ function createSqliteInstance(path: string): DbInstance {
   const inMemory = path === SQLITE_MEMORY_PATH
   if (!inMemory) mkdirSync(dirname(path), { recursive: true })
 
-  const client = createClient({ url: inMemory ? SQLITE_MEMORY_PATH : `file:${path}` })
-  const db = drizzleSqlite(client, { schema: sqliteSchema })
+  const rawClient = createClient({ url: inMemory ? SQLITE_MEMORY_PATH : `file:${path}` })
 
-  // libsql's execute is async, so pragmas cannot run synchronously on open. `ready` is awaited by
-  // ping() and runMigrations(); other callers should `await ready()` once before querying.
+  // libsql's execute is async, so pragmas cannot run synchronously on open. Pragmas must run on
+  // the raw client: running them through the ready-guarded client below would deadlock (the
+  // guard awaits `ready`, and `ready` awaits the pragma queries).
   const ready = (async () => {
     // WAL lets readers proceed during writes; in-memory databases always report "memory".
-    if (!inMemory) await client.execute("PRAGMA journal_mode=WAL")
+    if (!inMemory) await rawClient.execute("PRAGMA journal_mode=WAL")
     // Wait up to 5s on a locked database instead of failing immediately with SQLITE_BUSY.
-    await client.execute("PRAGMA busy_timeout=5000")
+    await rawClient.execute("PRAGMA busy_timeout=5000")
   })()
+  // Nothing awaits `ready` unless it's assigned to the instance or ping()/runMigrations() are
+  // called. Attach a no-op catch so a pragma failure doesn't surface as an unhandled rejection;
+  // the original promise below still rejects for anyone who does await it.
+  ready.catch(() => {})
+
+  // Every query issued through `db` or `db.$client` waits for the pragmas above before running,
+  // so request handlers that never call `await ready()` still get WAL mode and the busy timeout.
+  // `ready` stays exported on the instance for callers (ping(), runMigrations()) that want to
+  // fail fast on connection setup rather than on their first query.
+  const client = withReadyGuard(rawClient, ready)
+  const db = drizzleSqlite(client, { schema: sqliteSchema })
 
   return {
     dialect: "sqlite",
@@ -57,7 +121,7 @@ function createSqliteInstance(path: string): DbInstance {
       await db.run(sql`select 1`)
     },
     async close() {
-      client.close()
+      rawClient.close()
     },
   }
 }

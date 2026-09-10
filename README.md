@@ -39,7 +39,7 @@ Open [http://localhost:3000](http://localhost:3000). You're up. Three commands, 
 
 **Next steps after setup:**
 
-1. Edit `db/schema/sqlite.ts` (or `db/schema/postgres.ts`) to define your domain tables, and delete the dialect you are not using
+1. Edit the schema module your `DATABASE_URL` selects (`db/schema/sqlite.ts` by default, `db/schema/postgres.ts` for Postgres) to define your domain tables. Both files must stay in place because `db/index.ts` imports both; leave the other as the empty template
 2. Run `bun run db:generate` to write a SQL migration, then `bun run db:migrate` to apply it
 3. Update `CLAUDE.md` to describe your project -- this is what AI tools read first
 4. Add `AGENTS.md` files in subdirectories as your codebase grows

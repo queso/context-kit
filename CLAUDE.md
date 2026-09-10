@@ -135,7 +135,7 @@ renovate.json               Renovate config (npm dependency auto-updates)
 
 - **Server Components by default.** Only add `"use client"` when you need browser APIs, event handlers, or React hooks.
 - **Drizzle instance** in `db/index.ts`. Import `db` from `@/db` -- do not create a second Drizzle instance.
-- **Schema modules** are dialect-specific: `db/schema/sqlite.ts` and `db/schema/postgres.ts`. Keep the one your app uses, delete the other, and import tables from it. See `db/AGENTS.md`.
+- **Schema modules** are dialect-specific: `db/schema/sqlite.ts` and `db/schema/postgres.ts`. Edit the one your `DATABASE_URL` selects and import tables from it. Both files must exist because `db/index.ts` imports both; leave the unused one as the empty template. See `db/AGENTS.md`.
 - **shadcn/ui components** go in `components/ui/`. Add them with `bunx shadcn add <component>`.
 - **`cn()` utility** in `lib/utils.ts` for merging Tailwind classes. Use it in component className props.
 - **Test files** are colocated in `__tests__/` directories as `*.test.tsx`. `bun test` registers happy-dom via `test/preload.ts`.

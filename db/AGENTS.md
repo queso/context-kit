@@ -2,7 +2,7 @@
 
 ## Source of Truth
 
-`schema/<dialect>.ts` defines the database schema. Drizzle tables are dialect-specific, so the kit ships one schema module per dialect: `schema/sqlite.ts` (the default, on `@libsql/client`, embedded SQLite) and `schema/postgres.ts`. Pick one for your app and delete the other, together with its `migrations/<dialect>/` folder.
+`schema/<dialect>.ts` defines the database schema. Drizzle tables are dialect-specific, so the kit ships one schema module per dialect: `schema/sqlite.ts` (the default, on `@libsql/client`, embedded SQLite) and `schema/postgres.ts`. Edit the one your `DATABASE_URL` selects. Both modules must exist because `index.ts` imports both unconditionally; leave the unused one as the empty template it ships as (or mirror your tables into it if the app must run on either database).
 
 `index.ts` exports the `db` instance, `getDialect()`, and `ping()`. The driver is chosen from the `DATABASE_URL` scheme: `sqlite:` opens the file with `@libsql/client` (as a `file:` URL), `postgres:` / `postgresql:` uses the `postgres` driver; `drizzle.config.ts` at the project root reads the same variable so drizzle-kit targets the same dialect.
 
@@ -20,5 +20,6 @@ Use `bun run db:push` for quick prototyping (pushes schema changes without creat
 - Keep tables clean with clear column names. Use explicit primary keys (`integer().primaryKey()` or a `text` UUID) and name columns in `snake_case` when they should differ from the property name.
 - Always import `db` from `@/db`. Never create a second Drizzle instance.
 - The `DATABASE_URL` environment variable configures the connection (see `.env.example`). It defaults to `sqlite:./data/dev.sqlite` outside production and is required in production.
-- On SQLite, every open sets `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000` and creates the data directory on demand. Deploy with the database file on a local, writable filesystem; WAL does not work across network mounts.
+- For a remote PostgreSQL server, require verified TLS in the URL: `postgres://user:pass@host:5432/db?sslmode=verify-full`. The `postgres` driver reads `sslmode` from the URL, so TLS is a deployment setting rather than code; the local Docker Compose Postgres has no TLS and uses no `sslmode`. Never disable certificate validation (`sslmode=require` without verification, or `rejectUnauthorized: false`).
+- On SQLite, every open sets `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000` and creates the data directory on demand. Every query issued through `db` (or `db.$client`) waits for those pragmas, so handlers never need to call `ready()`; it exists for callers that want to fail fast on connection setup. Deploy with the database file on a local, writable filesystem; WAL does not work across network mounts.
 - Use `bun run db:studio` to browse data in a GUI during development.

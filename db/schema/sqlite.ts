@@ -1,9 +1,9 @@
 // Drizzle schema for the SQLite dialect.
 //
 // context-kit ships two schema modules (`db/schema/sqlite.ts` and `db/schema/postgres.ts`) so the
-// same app can run on either database. An app that has picked its database keeps one file and
-// deletes the other (plus the matching `db/migrations/<dialect>` folder). Until then, keep the
-// two in sync: every table defined here needs a `pgTable` twin in `postgres.ts`.
+// same app can run on either database. `db/index.ts` imports both, so both files must exist. Edit
+// the one your DATABASE_URL selects; leave the other as this empty template, or mirror every table
+// into it (a `pgTable` twin in `postgres.ts`) if the app must run on either database.
 //
 // Example table -- uncomment, then run `bun run db:generate` to produce a migration:
 //

@@ -1,9 +1,11 @@
-import { afterAll, afterEach, describe, expect, it, jest, mock, spyOn } from "bun:test"
+import { afterAll, afterEach, describe, expect, it, jest, spyOn } from "bun:test"
 import { logger } from "@/lib/logger"
 
-// mock.module is process-global and not hoisted: register it before importing the route.
-const mockPing = mock()
-mock.module("@/db", () => ({ ping: mockPing, dialect: "sqlite" }))
+// Spy on the real @/db module (importing it is side-effect free: it's a lazy singleton) instead
+// of mock.module, which is process-global and would leak into db/__tests__/index.test.ts and
+// db/__tests__/url.test.ts, which exercise the real module in the same test run.
+const dbMod = await import("@/db")
+const pingSpy = spyOn(dbMod, "ping")
 
 const { GET } = await import("@/app/api/health/route")
 
@@ -21,7 +23,7 @@ function useFakeTimers() {
 
 describe("GET /api/health", () => {
   afterEach(() => {
-    mockPing.mockReset()
+    pingSpy.mockReset()
     if (fakeTimersActive) {
       jest.clearAllTimers()
       jest.useRealTimers()
@@ -30,12 +32,13 @@ describe("GET /api/health", () => {
   })
 
   afterAll(() => {
+    pingSpy.mockRestore()
     infoSpy.mockRestore()
     errorSpy.mockRestore()
   })
 
   it("should return 200 with healthy status when DB is reachable", async () => {
-    mockPing.mockResolvedValueOnce(undefined)
+    pingSpy.mockResolvedValueOnce(undefined)
 
     const response = await GET()
     const body = await response.json()
@@ -46,7 +49,7 @@ describe("GET /api/health", () => {
   })
 
   it("should return 503 with unhealthy status when DB query fails", async () => {
-    mockPing.mockRejectedValueOnce(new Error("Connection refused"))
+    pingSpy.mockRejectedValueOnce(new Error("Connection refused"))
 
     const response = await GET()
     const body = await response.json()
@@ -59,7 +62,7 @@ describe("GET /api/health", () => {
   })
 
   it("should include latency as a number in milliseconds", async () => {
-    mockPing.mockResolvedValueOnce(undefined)
+    pingSpy.mockResolvedValueOnce(undefined)
 
     const response = await GET()
     const body = await response.json()
@@ -69,7 +72,7 @@ describe("GET /api/health", () => {
   })
 
   it("should include a timestamp as an ISO 8601 string", async () => {
-    mockPing.mockResolvedValueOnce(undefined)
+    pingSpy.mockResolvedValueOnce(undefined)
 
     const response = await GET()
     const body = await response.json()
@@ -84,7 +87,7 @@ describe("GET /api/health", () => {
     useFakeTimers()
 
     // Simulate a query that never resolves (hangs forever)
-    mockPing.mockImplementationOnce(
+    pingSpy.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
           setTimeout(() => resolve(), 10_000)

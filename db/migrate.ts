@@ -6,6 +6,18 @@ import { migrate as migratePostgres } from "drizzle-orm/postgres-js/migrator"
 import { type DbInstance, getInstance } from "@/db"
 import { getLogger } from "@/lib/logger"
 
+/**
+ * True when `error` indicates the migrations table does not exist yet -- the expected state on a
+ * fresh database, not a real failure. Postgres reports this as SQLSTATE 42P01 ("relation does not
+ * exist"); libsql/sqlite reports it as a "no such table" message. Anything else (connection
+ * refused, auth failure, timeout, ...) is a genuine error and must not be treated as zero rows.
+ */
+function isMissingTableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  if ((error as { code?: unknown }).code === "42P01") return true
+  return /no such table|does not exist/i.test(error.message)
+}
+
 /** Number of rows in drizzle's migrations table, or 0 when it does not exist yet. */
 async function countApplied(instance: DbInstance): Promise<number> {
   try {
@@ -19,8 +31,9 @@ async function countApplied(instance: DbInstance): Promise<number> {
       sql`select count(*) as count from drizzle.__drizzle_migrations`,
     )
     return Number(rows[0]?.count ?? 0)
-  } catch {
-    return 0
+  } catch (error) {
+    if (isMissingTableError(error)) return 0
+    throw error
   }
 }
 
@@ -28,9 +41,13 @@ async function countApplied(instance: DbInstance): Promise<number> {
  * Applies pending migrations from `db/migrations/<dialect>` (resolved from the project root).
  * A missing or empty migrations folder is a no-op.
  */
-export async function runMigrations(instance: DbInstance = getInstance()): Promise<void> {
+export async function runMigrations(
+  instance: DbInstance = getInstance(),
+  options: { migrationsFolder?: string } = {},
+): Promise<void> {
   const logger = getLogger()
-  const migrationsFolder = resolve(process.cwd(), "db/migrations", instance.dialect)
+  const migrationsFolder =
+    options.migrationsFolder ?? resolve(process.cwd(), "db/migrations", instance.dialect)
 
   if (!existsSync(join(migrationsFolder, "meta", "_journal.json"))) {
     logger.info({ migrationsFolder }, "No migrations folder found; skipping")
@@ -59,9 +76,12 @@ export async function runMigrations(instance: DbInstance = getInstance()): Promi
  * Runs pending migrations and exits the process on failure. Used at server start
  * (`instrumentation.ts`) so the app refuses to serve against a database it could not migrate.
  */
-export async function runMigrationsOrExit(): Promise<void> {
+export async function runMigrationsOrExit(
+  instance: DbInstance = getInstance(),
+  options: { migrationsFolder?: string } = {},
+): Promise<void> {
   try {
-    await runMigrations()
+    await runMigrations(instance, options)
   } catch (error) {
     getLogger().error({ error }, "Database migration failed on startup")
     process.exit(1)

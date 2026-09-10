@@ -1,29 +1,11 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { fetcher } from "@/lib/fetcher"
-
-// `globalThis.fetch` assignments leak across files (bun runs every test file in one process), so
-// the real fetch is captured here and restored after this file.
-const realFetch = globalThis.fetch
-
-/** Replaces global fetch with a mock that resolves to the given partial Response. */
-function mockFetch(response: Partial<Response>) {
-  const fetchMock = mock(() => Promise.resolve(response as Response))
-  globalThis.fetch = fetchMock as unknown as typeof fetch
-  return fetchMock
-}
-
-/** Awaits a promise that must reject; fails the test if it resolves. */
-async function captureRejection(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise
-  } catch (error) {
-    return error
-  }
-  throw new Error("Expected promise to reject, but it resolved")
-}
+// `globalThis.fetch` assignments leak across files (bun runs every test file in one process); see
+// test/fetch-mock.ts for the shared mock/restore helpers.
+import { captureRejection, mockFetch, restoreFetch } from "@/test/fetch-mock"
 
 afterAll(() => {
-  globalThis.fetch = realFetch
+  restoreFetch()
 })
 
 describe("fetcher", () => {
