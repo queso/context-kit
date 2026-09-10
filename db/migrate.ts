@@ -59,6 +59,43 @@ export interface Migrators {
 
 const defaultMigrators: Migrators = { sqlite: migrateSqlite, postgres: migratePostgres }
 
+/**
+ * Session-level advisory lock key guarding startup migrations on Postgres, so that when several
+ * replicas boot against the same database at once, only one of them actually runs the migrator
+ * while the others block until it releases. This is a fixed, arbitrary bigint; nothing else in
+ * the app takes an advisory lock, so there is no key to collide with.
+ */
+const MIGRATION_LOCK_KEY = 7_242_109_001
+
+/**
+ * Runs `fn` while holding a Postgres session-level advisory lock (`pg_advisory_lock`), so
+ * concurrent `runMigrations` calls against the same database -- e.g. several replicas starting at
+ * once -- serialize instead of racing `countApplied` and the migrator (the migrator on its own
+ * takes no lock, so two instances can otherwise read the same "before" count and both try to
+ * apply the same pending migrations).
+ *
+ * postgres.js pools connections, and `pg_advisory_lock`/`pg_advisory_unlock` are scoped to the
+ * physical connection that took the lock, so the lock and unlock must run on the same dedicated
+ * connection: `$client.reserve()` checks one out of the pool for the whole call, and it is
+ * released back to the pool only after `pg_advisory_unlock` has run on it in the `finally`. Any
+ * other replica calling this at the same time blocks inside `pg_advisory_lock` until this one
+ * unlocks, then proceeds -- its own `countApplied`/migrator calls run against an already-migrated
+ * database and become no-ops.
+ */
+async function withPostgresMigrationLock<T>(
+  instance: Extract<DbInstance, { dialect: "postgres" }>,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const reserved = await instance.db.$client.reserve()
+  try {
+    await reserved`select pg_advisory_lock(${MIGRATION_LOCK_KEY})`
+    return await fn()
+  } finally {
+    await reserved`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`
+    reserved.release()
+  }
+}
+
 interface RunMigrationsOptions {
   migrationsFolder?: string
   migrators?: Migrators
@@ -83,15 +120,19 @@ export async function runMigrations(
   }
 
   await instance.ready
-  const before = await countApplied(instance)
 
+  let applied: number
   if (instance.dialect === "sqlite") {
+    const before = await countApplied(instance)
     await migrators.sqlite(instance.db, { migrationsFolder })
+    applied = (await countApplied(instance)) - before
   } else {
-    await migrators.postgres(instance.db, { migrationsFolder })
+    applied = await withPostgresMigrationLock(instance, async () => {
+      const before = await countApplied(instance)
+      await migrators.postgres(instance.db, { migrationsFolder })
+      return (await countApplied(instance)) - before
+    })
   }
-
-  const applied = (await countApplied(instance)) - before
 
   if (applied > 0) {
     logger.info({ applied, dialect: instance.dialect }, `Applied ${applied} migrations`)

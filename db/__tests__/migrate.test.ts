@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it, mock, spyOn } from "bun:test"
+import { createHash } from "node:crypto"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -90,6 +91,27 @@ function sqlText(query: unknown): string {
       return Array.isArray(value) ? value.join("") : ""
     })
     .join("")
+}
+
+/**
+ * A fake postgres.js `ReservedSql` connection: callable as a tagged template like the real thing,
+ * recording "lock" or "unlock" into `order` (a caller-shared array, so ordering against a
+ * migrator that also pushes into it can be asserted) for whichever `pg_advisory_*` call it saw,
+ * plus a `release` mock. Every call resolves `[]`, matching what a real `select pg_advisory_*`
+ * query returns for the purposes of `withPostgresMigrationLock`, which never reads the result.
+ */
+function makeFakeReserved(order: string[]) {
+  const release = mock()
+  const reserved = Object.assign(
+    (strings: TemplateStringsArray, ..._values: unknown[]) => {
+      const text = strings.join("")
+      if (text.includes("pg_advisory_unlock")) order.push("unlock")
+      else if (text.includes("pg_advisory_lock")) order.push("lock")
+      return Promise.resolve([])
+    },
+    { release },
+  )
+  return reserved
 }
 
 async function tableExists(instance: DbInstance, name: string): Promise<boolean> {
@@ -203,7 +225,10 @@ describe("runMigrations (postgres error shapes)", () => {
     )
     const stub = {
       dialect: "postgres",
-      db: { execute: () => Promise.reject(error) },
+      db: {
+        execute: () => Promise.reject(error),
+        $client: { reserve: () => Promise.resolve(makeFakeReserved([])) },
+      },
       ready: Promise.resolve(),
     } as unknown as DbInstance
     const postgresMigrator = mock(async () => {})
@@ -233,7 +258,10 @@ describe("runMigrations (postgres error shapes)", () => {
     )
     const stub = {
       dialect: "postgres",
-      db: { execute: () => Promise.reject(error) },
+      db: {
+        execute: () => Promise.reject(error),
+        $client: { reserve: () => Promise.resolve(makeFakeReserved([])) },
+      },
       ready: Promise.resolve(),
     } as unknown as DbInstance
     const postgresMigrator = mock(async () => {})
@@ -257,7 +285,10 @@ describe("runMigrations (postgres error shapes)", () => {
     )
     const stub = {
       dialect: "postgres",
-      db: { execute: () => Promise.reject(error) },
+      db: {
+        execute: () => Promise.reject(error),
+        $client: { reserve: () => Promise.resolve(makeFakeReserved([])) },
+      },
       ready: Promise.resolve(),
     } as unknown as DbInstance
     const postgresMigrator = mock(async () => {})
@@ -279,7 +310,7 @@ describe("runMigrations (postgres error shapes)", () => {
       .mockResolvedValueOnce([{ count: "1" }])
     const stub = {
       dialect: "postgres",
-      db: { execute },
+      db: { execute, $client: { reserve: () => Promise.resolve(makeFakeReserved([])) } },
       ready: Promise.resolve(),
     } as unknown as DbInstance
     const postgresMigrator = mock(async () => {})
@@ -296,6 +327,67 @@ describe("runMigrations (postgres error shapes)", () => {
 
     const firstQuery = execute.mock.calls[0]?.[0]
     expect(sqlText(firstQuery)).toContain("drizzle.__drizzle_migrations")
+  })
+})
+
+// Regression coverage for the startup-migration race: several replicas booting at once must not
+// both read the same `countApplied` baseline and both run the migrator. `runMigrations` guards
+// its Postgres database work with a session-level advisory lock taken on a connection reserved
+// for the duration of the call (see `withPostgresMigrationLock` in migrate.ts). These tests use a
+// fake reserved connection to assert the observable ordering without a real Postgres database;
+// `runMigrations (real Postgres advisory lock)` below exercises the real thing.
+describe("runMigrations (postgres advisory lock, stubbed)", () => {
+  it("locks before the migrator runs and unlocks after, releasing the connection once", async () => {
+    const migrationsFolder = makePostgresMigrationsFolder("lock-order", "lock_order_test")
+    const order: string[] = []
+    const reserved = makeFakeReserved(order)
+    const execute = mock()
+      .mockResolvedValueOnce([{ count: "0" }])
+      .mockResolvedValueOnce([{ count: "1" }])
+    const stub = {
+      dialect: "postgres",
+      db: { execute, $client: { reserve: () => Promise.resolve(reserved) } },
+      ready: Promise.resolve(),
+    } as unknown as DbInstance
+    const postgresMigrator = mock(async () => {
+      order.push("migrate")
+    })
+
+    await runMigrations(stub, {
+      migrationsFolder,
+      migrators: { sqlite: mock(async () => {}), postgres: postgresMigrator },
+    })
+
+    expect(order).toEqual(["lock", "migrate", "unlock"])
+    expect(reserved.release).toHaveBeenCalledTimes(1)
+  })
+
+  it("still unlocks and releases the connection when the migrator rejects, and rethrows", async () => {
+    const migrationsFolder = makePostgresMigrationsFolder("lock-error", "lock_error_test")
+    const order: string[] = []
+    const reserved = makeFakeReserved(order)
+    const stub = {
+      dialect: "postgres",
+      db: {
+        execute: mock().mockResolvedValueOnce([{ count: "0" }]),
+        $client: { reserve: () => Promise.resolve(reserved) },
+      },
+      ready: Promise.resolve(),
+    } as unknown as DbInstance
+    const postgresMigrator = mock(async () => {
+      order.push("migrate")
+      throw new Error("migration failed")
+    })
+
+    await expect(
+      runMigrations(stub, {
+        migrationsFolder,
+        migrators: { sqlite: mock(async () => {}), postgres: postgresMigrator },
+      }),
+    ).rejects.toThrow("migration failed")
+
+    expect(order).toEqual(["lock", "migrate", "unlock"])
+    expect(reserved.release).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -327,6 +419,52 @@ describe("runMigrations (real Postgres)", () => {
       } finally {
         await instance.db.execute(sql`drop table if exists ${sql.identifier(tableName)}`)
         await instance.close()
+      }
+    },
+  )
+
+  // Regression test for the race the advisory lock fixes: two instances (simulating two
+  // replicas) run `runMigrations` concurrently against the same migrations folder, whose single
+  // migration creates a uniquely named table WITHOUT `IF NOT EXISTS`. Without the lock, both
+  // instances can read the same "before" count and both attempt to `CREATE TABLE` at once, and
+  // the second one to reach that statement fails with a duplicate-table error (or, absent that
+  // race, drizzle's own migrator applies the migration twice). With the lock, the second instance
+  // blocks in `pg_advisory_lock` until the first releases, then finds the migration already
+  // applied and does nothing.
+  it.skipIf(!hasPostgres)(
+    "serializes concurrent runMigrations calls so the migration is applied exactly once",
+    async () => {
+      if (!databaseUrl) throw new Error("expected DATABASE_URL to be set")
+      const tableName = `migrate_lock_test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const migrationSql = `CREATE TABLE ${tableName} (id serial primary key);`
+      const migrationsFolder = makePostgresMigrationsFolder(`real-lock-${tableName}`, tableName)
+      const expectedHash = createHash("sha256").update(migrationSql).digest("hex")
+
+      const a = createDb(databaseUrl)
+      const b = createDb(databaseUrl)
+      if (a.dialect !== "postgres" || b.dialect !== "postgres") {
+        throw new Error("expected postgres instances")
+      }
+
+      try {
+        await Promise.all([
+          runMigrations(a, { migrationsFolder }),
+          runMigrations(b, { migrationsFolder }),
+        ])
+
+        const existsRows = await a.db.execute<{ exists: boolean }>(
+          sql`select to_regclass(${tableName}) is not null as exists`,
+        )
+        expect(existsRows[0]?.exists).toBe(true)
+
+        const recordedRows = await a.db.execute<{ count: string }>(
+          sql`select count(*) as count from drizzle.__drizzle_migrations where hash = ${expectedHash}`,
+        )
+        expect(Number(recordedRows[0]?.count)).toBe(1)
+      } finally {
+        await a.db.execute(sql`drop table if exists ${sql.identifier(tableName)}`)
+        await a.close()
+        await b.close()
       }
     },
   )
