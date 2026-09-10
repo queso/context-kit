@@ -1,5 +1,5 @@
+import { ping } from "@/db"
 import { apiError } from "@/lib/api"
-import { prisma } from "@/lib/db"
 import { logger } from "@/lib/logger"
 
 const TIMEOUT_MS = 5_000
@@ -10,7 +10,7 @@ export async function GET() {
 
   try {
     await Promise.race([
-      prisma.$queryRaw`SELECT 1`,
+      ping(),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Database health check timed out")), TIMEOUT_MS),
       ),

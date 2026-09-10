@@ -3,6 +3,8 @@ import { getSecurityHeaders } from "@/lib/security-headers"
 
 const nextConfig: NextConfig = {
   transpilePackages: ["reactive-swr"],
+  // Standalone builds only ship traced files; migrations are read from disk at startup.
+  outputFileTracingIncludes: { "/": ["./db/migrations/**/*"] },
   async headers() {
     return [
       {
