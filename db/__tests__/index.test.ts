@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sql } from "drizzle-orm"
-import { createDb, type DbInstance } from "@/db"
+import { createDb, type DbInstance, getInstance } from "@/db"
 
 const tempRoot = mkdtempSync(join(tmpdir(), "context-kit-db-"))
 const openInstances: DbInstance[] = []
@@ -89,5 +89,25 @@ describe("createDb (postgres)", () => {
 describe("createDb (unsupported)", () => {
   it("throws a message naming both supported schemes", () => {
     expect(() => createDb("mysql://user:pass@localhost:3306/db")).toThrow(/sqlite:[\s\S]*postgres:/)
+  })
+})
+
+describe("getInstance singleton", () => {
+  afterAll(async () => {
+    // Leave the module-level singleton closed and evicted so other test files that touch
+    // `db`/`getInstance()` (none currently open a connection, but a future one might) start fresh
+    // rather than inheriting a closed connection from this describe block.
+    await getInstance().close()
+  })
+
+  it("reuses the same instance across calls until closed, then reconnects on next call", async () => {
+    const first = getInstance()
+    expect(getInstance()).toBe(first)
+
+    await first.close()
+
+    const second = getInstance()
+    expect(second).not.toBe(first)
+    await expect(second.ping()).resolves.toBeUndefined()
   })
 })

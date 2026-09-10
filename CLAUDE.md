@@ -91,7 +91,7 @@ components/
   ui/                       shadcn/ui components (add via `bunx shadcn add`)
 db/                         Database layer (Drizzle)
   __tests__/                Database layer tests
-  index.ts                  Drizzle instance `db`, `getDialect()`, and `ping()` -- driver picked from DATABASE_URL
+  index.ts                  Drizzle instance `db` (plus `getDb()`, `getDialect()`, `ping()`) -- driver picked from DATABASE_URL
   migrate.ts                Migration runner (`bun run db:migrate`)
   schema/
     sqlite.ts               Schema for the SQLite dialect (default)
@@ -264,7 +264,7 @@ const { trigger } = useSWRMutation("/api/todos", mutationFetcher, {
 | `lib/sse.ts` | `createSSEStream()` -- returns `{ stream, writer, headers }` for SSE API routes |
 | `app/providers.tsx` | `<Providers>` -- SWRConfig + SSEProvider + CorrelationIdContext. `useCorrelationId()` hook |
 | `middleware.ts` | CORS, rate limiting, correlation IDs, request logging for all `/api/*` routes |
-| `db/index.ts` | `db` (Drizzle instance), `getDialect()`, and `ping()` -- the only database entry point |
+| `db/index.ts` | `db` (Drizzle instance), `getDb()` (same instance, as a function call for code that must not hold the proxy), `getDialect()`, and `ping()` -- the only database entry point |
 
 ## API Layer
 

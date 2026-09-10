@@ -1,7 +1,7 @@
 import { z } from "zod"
+// db/url.ts is a dependency-free parser shared with db/index.ts and drizzle.config.ts; importing it
+// here keeps the DATABASE_URL scheme rule in one place without pulling the driver layer into lib/.
 import { DEFAULT_SQLITE_URL, hasSupportedScheme, UNSUPPORTED_SCHEME_MESSAGE } from "@/db/url"
-
-export { parseDatabaseUrl } from "@/db/url"
 
 const databaseUrlSchema = z
   .string()

@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, jest, mock, spyOn } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, jest, mock, spyOn } from "bun:test"
 import { NextRequest } from "next/server"
 
 type Env = ReturnType<typeof import("@/lib/env").getEnv>
@@ -19,16 +19,22 @@ function mockEnv(overrides: Partial<Env> = {}): Env {
 
 // Spy on the real env and logger modules (module mocks are process-global in bun:test and would
 // leak into env.test.ts / logger.test.ts). Named imports inside middleware.ts see the spies.
+// Spies are (re)created fresh before every test and restored after, so no state or call history
+// leaks between tests.
 const envMod = await import("@/lib/env")
 const loggerMod = await import("@/lib/logger")
 
-const getEnv = spyOn(envMod, "getEnv").mockReturnValue(defaultMockEnv)
-const noopLogger = { info: mock(), error: mock(), warn: mock(), debug: mock() }
-spyOn(loggerMod, "getLogger").mockReturnValue(
-  noopLogger as unknown as ReturnType<typeof loggerMod.getLogger>,
-)
+let getEnv: ReturnType<typeof spyOn<typeof envMod, "getEnv">>
 
-afterAll(() => {
+beforeEach(() => {
+  getEnv = spyOn(envMod, "getEnv").mockReturnValue(defaultMockEnv)
+  const noopLogger = { info: mock(), error: mock(), warn: mock(), debug: mock() }
+  spyOn(loggerMod, "getLogger").mockReturnValue(
+    noopLogger as unknown as ReturnType<typeof loggerMod.getLogger>,
+  )
+})
+
+afterEach(() => {
   mock.restore()
 })
 
@@ -61,10 +67,6 @@ describe("middleware exports", () => {
 })
 
 describe("CORS handling", () => {
-  beforeEach(() => {
-    mock.clearAllMocks()
-  })
-
   it("should NOT set Access-Control-Allow-Origin when CORS_ORIGIN is empty", async () => {
     getEnv.mockReturnValue(mockEnv())
 
@@ -125,7 +127,6 @@ describe("CORS handling", () => {
 
 describe("Rate limiting", () => {
   beforeEach(() => {
-    mock.clearAllMocks()
     jest.useFakeTimers()
   })
 
@@ -268,10 +269,6 @@ describe("Rate limiting", () => {
 })
 
 describe("Correlation ID", () => {
-  beforeEach(() => {
-    mock.clearAllMocks()
-  })
-
   it("should pass through existing X-Correlation-Id from request", async () => {
     getEnv.mockReturnValue(mockEnv())
 
@@ -311,10 +308,6 @@ describe("Correlation ID", () => {
 })
 
 describe("Error handling", () => {
-  beforeEach(() => {
-    mock.clearAllMocks()
-  })
-
   it("should return 500 with ApiErrorResponse shape when getEnv() throws", async () => {
     getEnv.mockImplementation(() => {
       throw new Error("Environment validation failed")
@@ -346,10 +339,6 @@ describe("Error handling", () => {
 })
 
 describe("Integration scenarios", () => {
-  beforeEach(() => {
-    mock.clearAllMocks()
-  })
-
   it("should handle complete request flow with all features", async () => {
     getEnv.mockReturnValue(mockEnv({ CORS_ORIGIN: "https://example.com" }))
 

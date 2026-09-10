@@ -4,7 +4,7 @@
 
 `schema/<dialect>.ts` defines the database schema. Drizzle tables are dialect-specific, so the kit ships one schema module per dialect: `schema/sqlite.ts` (the default, on `@libsql/client`, embedded SQLite) and `schema/postgres.ts`. Edit the one your `DATABASE_URL` selects. Both modules must exist because `index.ts` imports both unconditionally; leave the unused one as the empty template it ships as (or mirror your tables into it if the app must run on either database).
 
-`index.ts` exports the `db` instance, `getDialect()`, and `ping()`. The driver is chosen from the `DATABASE_URL` scheme: `sqlite:` opens the file with `@libsql/client` (as a `file:` URL), `postgres:` / `postgresql:` uses the `postgres` driver; `drizzle.config.ts` at the project root reads the same variable so drizzle-kit targets the same dialect.
+`index.ts` exports the `db` instance, `getDb()` (the same instance behind a function call, for code that prefers not to hold the lazy proxy), `getDialect()`, and `ping()`. The driver is chosen from the `DATABASE_URL` scheme: `sqlite:` opens the file with `@libsql/client` (as a `file:` URL), `postgres:` / `postgresql:` uses the `postgres` driver; `drizzle.config.ts` at the project root reads the same variable so drizzle-kit targets the same dialect.
 
 ## Workflow
 

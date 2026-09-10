@@ -157,15 +157,39 @@ export function createDb(url: string): DbInstance {
     : createPostgresInstance(parsed.url)
 }
 
+/**
+ * Wraps a `DbInstance` so its `close()` also evicts the cached singleton once the underlying
+ * connection has actually closed. Without this, a caller that awaits `close()` and then touches
+ * `db`/`getDb()`/`getInstance()` again gets the same closed instance back, and every subsequent
+ * query fails instead of transparently reconnecting.
+ */
+function withEviction(instance: DbInstance, evict: () => void): DbInstance {
+  async function close(): Promise<void> {
+    await instance.close()
+    evict()
+  }
+
+  return instance.dialect === "sqlite" ? { ...instance, close } : { ...instance, close }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Lazy singleton. Nothing is opened until first use, so importing `@/db` during `next build` or
 // in a test is side-effect free. Stored on globalThis so dev hot-reload reuses the connection.
+//
+// Invariant: `close()` on the returned instance evicts it from `globalForDb` once the underlying
+// connection has closed, so the next `getInstance()`/`getDb()`/`db.*` call opens a fresh
+// connection instead of reusing (and failing against) a closed one.
 // ---------------------------------------------------------------------------------------------
 const globalForDb = globalThis as unknown as { __contextKitDb?: DbInstance }
 
 export function getInstance(): DbInstance {
   if (!globalForDb.__contextKitDb) {
-    globalForDb.__contextKitDb = createDb(getEnv().DATABASE_URL)
+    let instance: DbInstance
+    const evict = () => {
+      if (globalForDb.__contextKitDb === instance) delete globalForDb.__contextKitDb
+    }
+    instance = withEviction(createDb(getEnv().DATABASE_URL), evict)
+    globalForDb.__contextKitDb = instance
   }
   return globalForDb.__contextKitDb
 }

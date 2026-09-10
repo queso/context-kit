@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it, mock, spyOn } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { sql } from "drizzle-orm"
 import { createDb, type DbInstance } from "@/db"
 import { runMigrations, runMigrationsOrExit } from "@/db/migrate"
 
@@ -49,6 +50,48 @@ function makeEmptyFolder(dirName: string): string {
   return dir
 }
 
+/** A migrations folder with a single Postgres migration creating `tableName`. */
+function makePostgresMigrationsFolder(dirName: string, tableName: string): string {
+  const dir = join(tempRoot, dirName)
+  const tag = `0000_${tableName}`
+  mkdirSync(join(dir, "meta"), { recursive: true })
+  writeFileSync(
+    join(dir, "meta", "_journal.json"),
+    JSON.stringify({
+      version: "7",
+      dialect: "postgresql",
+      entries: [{ idx: 0, version: "7", when: Date.now(), tag, breakpoints: true }],
+    }),
+  )
+  writeFileSync(join(dir, `${tag}.sql`), `CREATE TABLE ${tableName} (id serial primary key);`)
+  return dir
+}
+
+/**
+ * Builds an Error shaped like drizzle-orm's `DrizzleQueryError`: message `Failed query: <sql>`
+ * with the driver's own error (carrying the Postgres `code`) on `.cause`. This is what
+ * `instance.db.execute()` rejects with on the postgres branch of `countApplied`, since that path
+ * goes through drizzle rather than a raw client.
+ */
+function wrappedQueryError(query: string, cause: Error): Error {
+  return Object.assign(new Error(`Failed query: ${query}\nparams: `), { cause })
+}
+
+/**
+ * Pulls the literal SQL text out of a drizzle `sql` template result (a `SQL` instance) without
+ * going through a dialect-specific `toQuery()`. Used to assert which query a stub's `db.execute`
+ * was called with.
+ */
+function sqlText(query: unknown): string {
+  const chunks = (query as { queryChunks?: unknown[] }).queryChunks ?? []
+  return chunks
+    .map((chunk) => {
+      const value = (chunk as { value?: unknown }).value
+      return Array.isArray(value) ? value.join("") : ""
+    })
+    .join("")
+}
+
 async function tableExists(instance: DbInstance, name: string): Promise<boolean> {
   if (instance.dialect !== "sqlite") throw new Error("expected a sqlite instance")
   await instance.ready
@@ -93,7 +136,17 @@ describe("runMigrations", () => {
       "CREATE TABLE widgets (id integer primary key, name text not null);",
     )
 
+    // countApplied() runs before the migrator, and on a fresh database its count query hits a
+    // table that does not exist yet -- this is the sqlite half of the bug this file covers:
+    // isMissingTableError() must treat that "no such table" rejection as zero rows, not rethrow
+    // it, or runMigrations() would never reach the migrator below.
+    if (instance.dialect !== "sqlite") throw new Error("expected a sqlite instance")
+    const executeSpy = spyOn(instance.db.$client, "execute")
+
     await runMigrations(instance, { migrationsFolder })
+
+    expect(executeSpy.mock.calls[0]?.[0]).toBe("select count(*) as count from __drizzle_migrations")
+    executeSpy.mockRestore()
 
     expect(await tableExists(instance, "widgets")).toBe(true)
     expect(await countRows(instance, "__drizzle_migrations")).toBe(1)
@@ -131,6 +184,152 @@ describe("runMigrations", () => {
       "connection refused",
     )
   })
+})
+
+// Regression coverage for a fresh Postgres database: `instance.db.execute()` goes through
+// drizzle-orm, which wraps the raw postgres error in `DrizzleQueryError`. The Postgres `code`
+// lives on `.cause`, not on the wrapper itself, and on a database that has never run a migration
+// the `drizzle` schema does not exist yet (3F000) rather than just the table (42P01). Both stub
+// instances below use `dialect: "postgres"` with only `db.execute` implemented -- everything else
+// `runMigrations` touches on that path (the migrator) is supplied via the `migrators` injection
+// point, so the fix is exercised without a real Postgres connection.
+describe("runMigrations (postgres error shapes)", () => {
+  it("proceeds past a fresh-schema error (3F000) into the postgres migrator", async () => {
+    const migrationsFolder = makePostgresMigrationsFolder("schema-missing", "schema_missing_test")
+    const cause = Object.assign(new Error('schema "drizzle" does not exist'), { code: "3F000" })
+    const error = wrappedQueryError(
+      "select count(*) as count from drizzle.__drizzle_migrations",
+      cause,
+    )
+    const stub = {
+      dialect: "postgres",
+      db: { execute: () => Promise.reject(error) },
+      ready: Promise.resolve(),
+    } as unknown as DbInstance
+    const postgresMigrator = mock(async () => {})
+    const sqliteMigrator = mock(async () => {})
+
+    await expect(
+      runMigrations(stub, {
+        migrationsFolder,
+        migrators: { sqlite: sqliteMigrator, postgres: postgresMigrator },
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(postgresMigrator).toHaveBeenCalledTimes(1)
+    expect(postgresMigrator).toHaveBeenCalledWith(stub.db, { migrationsFolder })
+    expect(sqliteMigrator).not.toHaveBeenCalled()
+  })
+
+  it("proceeds past a missing-table error (42P01) into the postgres migrator", async () => {
+    const migrationsFolder = makePostgresMigrationsFolder("table-missing", "table_missing_test")
+    const cause = Object.assign(
+      new Error('relation "drizzle.__drizzle_migrations" does not exist'),
+      { code: "42P01" },
+    )
+    const error = wrappedQueryError(
+      "select count(*) as count from drizzle.__drizzle_migrations",
+      cause,
+    )
+    const stub = {
+      dialect: "postgres",
+      db: { execute: () => Promise.reject(error) },
+      ready: Promise.resolve(),
+    } as unknown as DbInstance
+    const postgresMigrator = mock(async () => {})
+
+    await expect(
+      runMigrations(stub, {
+        migrationsFolder,
+        migrators: { sqlite: mock(async () => {}), postgres: postgresMigrator },
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(postgresMigrator).toHaveBeenCalledWith(stub.db, { migrationsFolder })
+  })
+
+  it("propagates a non-missing-table error wrapped by drizzle instead of treating it as zero rows", async () => {
+    const migrationsFolder = makePostgresMigrationsFolder("auth-failure", "auth_failure_test")
+    const cause = Object.assign(new Error("password authentication failed"), { code: "28P01" })
+    const error = wrappedQueryError(
+      "select count(*) as count from drizzle.__drizzle_migrations",
+      cause,
+    )
+    const stub = {
+      dialect: "postgres",
+      db: { execute: () => Promise.reject(error) },
+      ready: Promise.resolve(),
+    } as unknown as DbInstance
+    const postgresMigrator = mock(async () => {})
+
+    await expect(
+      runMigrations(stub, {
+        migrationsFolder,
+        migrators: { sqlite: mock(async () => {}), postgres: postgresMigrator },
+      }),
+    ).rejects.toThrow("Failed query")
+
+    expect(postgresMigrator).not.toHaveBeenCalled()
+  })
+
+  it("dispatches to the postgres migrator and not the sqlite one", async () => {
+    const migrationsFolder = makePostgresMigrationsFolder("dispatch", "dispatch_test")
+    const execute = mock()
+      .mockResolvedValueOnce([{ count: "0" }])
+      .mockResolvedValueOnce([{ count: "1" }])
+    const stub = {
+      dialect: "postgres",
+      db: { execute },
+      ready: Promise.resolve(),
+    } as unknown as DbInstance
+    const postgresMigrator = mock(async () => {})
+    const sqliteMigrator = mock(async () => {})
+
+    await runMigrations(stub, {
+      migrationsFolder,
+      migrators: { sqlite: sqliteMigrator, postgres: postgresMigrator },
+    })
+
+    expect(postgresMigrator).toHaveBeenCalledTimes(1)
+    expect(postgresMigrator).toHaveBeenCalledWith(stub.db, { migrationsFolder })
+    expect(sqliteMigrator).not.toHaveBeenCalled()
+
+    const firstQuery = execute.mock.calls[0]?.[0]
+    expect(sqlText(firstQuery)).toContain("drizzle.__drizzle_migrations")
+  })
+})
+
+// Runs only against a real Postgres database (the CI Postgres job). CI has already run
+// `bun run db:migrate` against the repo's own (empty) postgres journal before `bun test`, so the
+// `drizzle` schema and `__drizzle_migrations` table may or may not exist yet when this runs --
+// the point of this test is that it passes either way.
+describe("runMigrations (real Postgres)", () => {
+  const databaseUrl = process.env.DATABASE_URL
+  const hasPostgres = databaseUrl?.startsWith("postgres") ?? false
+
+  it.skipIf(!hasPostgres)(
+    "applies and re-runs migrations against a real Postgres database",
+    async () => {
+      if (!databaseUrl) throw new Error("expected DATABASE_URL to be set")
+      const tableName = `migrate_test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const migrationsFolder = makePostgresMigrationsFolder(`real-${tableName}`, tableName)
+      const instance = createDb(databaseUrl)
+      if (instance.dialect !== "postgres") throw new Error("expected a postgres instance")
+
+      try {
+        await runMigrations(instance, { migrationsFolder })
+        await expect(runMigrations(instance, { migrationsFolder })).resolves.toBeUndefined()
+
+        const rows = await instance.db.execute<{ exists: boolean }>(
+          sql`select to_regclass(${tableName}) is not null as exists`,
+        )
+        expect(rows[0]?.exists).toBe(true)
+      } finally {
+        await instance.db.execute(sql`drop table if exists ${sql.identifier(tableName)}`)
+        await instance.close()
+      }
+    },
+  )
 })
 
 class ExitSignal extends Error {
