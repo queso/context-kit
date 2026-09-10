@@ -14,7 +14,7 @@ const MAX_CAUSE_DEPTH = 8
  * yet -- the expected state on a fresh database, not a real failure. Postgres reports this as
  * SQLSTATE 42P01 ("undefined_table") once the `drizzle` schema exists, or 3F000
  * ("invalid_schema_name") on a database where that schema has never been created; libsql/sqlite
- * reports it as a "no such table" message.
+ * reports it as a "no such table" message with no code.
  *
  * The postgres branch of `countApplied` queries through drizzle (`instance.db.execute`), which
  * wraps driver errors in `DrizzleQueryError` -- its message is `Failed query: <sql>` and the
@@ -25,9 +25,12 @@ const MAX_CAUSE_DEPTH = 8
 function isMissingTableError(error: unknown, depth = 0): boolean {
   if (depth > MAX_CAUSE_DEPTH) return false
   if (!(error instanceof Error)) return false
-  if ((error as { code?: unknown }).code === "42P01") return true
-  if ((error as { code?: unknown }).code === "3F000") return true
-  if (/no such table|does not exist/i.test(error.message)) return true
+  const code = (error as { code?: unknown }).code
+  if (code === "42P01" || code === "3F000") return true
+  // Only libsql/sqlite errors are matched by message; Postgres errors always carry a SQLSTATE, and
+  // messages like `database "x" does not exist` (3D000) or `role "x" does not exist` (28000) are
+  // real failures that must not be mistaken for a fresh database.
+  if (code === undefined && /no such table/i.test(error.message)) return true
   if (error.cause instanceof Error) return isMissingTableError(error.cause, depth + 1)
   return false
 }
