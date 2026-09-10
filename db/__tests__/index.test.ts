@@ -108,14 +108,18 @@ describe("createDb (unsupported)", () => {
 })
 
 describe("getInstance singleton", () => {
+  // Only the tests below touch the module-level singleton; the flag keeps the cleanup from lazily
+  // opening a connection against the ambient DATABASE_URL when nothing here created one.
+  let singletonOpened = false
+
   afterAll(async () => {
-    // Leave the module-level singleton closed and evicted so other test files that touch
-    // `db`/`getInstance()` (none currently open a connection, but a future one might) start fresh
-    // rather than inheriting a closed connection from this describe block.
-    await getInstance().close()
+    // Leave the singleton closed and evicted so other test files that touch `db`/`getInstance()`
+    // start fresh rather than inheriting a closed connection from this describe block.
+    if (singletonOpened) await getInstance().close()
   })
 
   it("reuses the same instance across calls until closed, then reconnects on next call", async () => {
+    singletonOpened = true
     const first = getInstance()
     expect(getInstance()).toBe(first)
 

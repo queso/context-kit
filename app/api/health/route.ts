@@ -8,12 +8,13 @@ export async function GET() {
   const timestamp = new Date().toISOString()
   const start = Date.now()
 
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     await Promise.race([
       ping(),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Database health check timed out")), TIMEOUT_MS),
-      ),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Database health check timed out")), TIMEOUT_MS)
+      }),
     ])
 
     const latency = Date.now() - start
@@ -28,5 +29,8 @@ export async function GET() {
     return apiError(503, "SERVICE_UNAVAILABLE", message, {
       details: { status: "unhealthy", database: "disconnected", latency, timestamp },
     })
+  } finally {
+    // Without this every successful check leaves a pending 5s timer behind.
+    clearTimeout(timer)
   }
 }

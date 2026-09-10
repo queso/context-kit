@@ -71,6 +71,15 @@ describe("GET /api/health", () => {
     expect(body.latency).toBeGreaterThanOrEqual(0)
   })
 
+  it("clears the timeout timer once the ping has settled", async () => {
+    useFakeTimers()
+    pingSpy.mockResolvedValueOnce(undefined)
+
+    await GET()
+
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
   it("should include a timestamp as an ISO 8601 string", async () => {
     pingSpy.mockResolvedValueOnce(undefined)
 
