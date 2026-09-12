@@ -16,6 +16,11 @@
 #   APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build
 # Docker Desktop and OrbStack map file ownership for you, so macOS and Windows need nothing.
 #
+# A `data` volume created before the container ran as non-root is root-owned, so the `node`
+# user cannot write dev.sqlite after upgrading. Fix an existing volume in place:
+#   docker compose run --rm --user root app chown -R node:node /app/data
+# or drop it and let Compose recreate it owned by `node`: `docker compose down -v`.
+#
 # The `app` service has no depends_on so the default lane stays single-container.
 # In the Postgres lane the app fails fast if Postgres is not accepting connections
 # yet; `restart: unless-stopped` retries it until the healthcheck passes.

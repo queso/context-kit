@@ -18,13 +18,28 @@ COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 # host whose user is not 1000, rebuild with matching ids (docker-compose.yml maps APP_UID/APP_GID
 # to these args; shells reserve the names UID and GID):
 #   APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build
+# The remap below rejects an APP_UID/APP_GID already claimed by another account in
+# node:24-alpine (e.g. GID 65534, owned by `nobody`) instead of failing deep inside
+# `addgroup`/`adduser`, and is safe to run whether or not `deluser` also drops the primary group.
 ARG UID=1000
 ARG GID=1000
 RUN if [ "$UID:$GID" != "$(id -u node):$(id -g node)" ]; then \
-      deluser node \
-      && addgroup -g "$GID" node \
-      && adduser -u "$UID" -G node -h /home/node -s /bin/sh -D node \
-      && chown -R node:node /home/node; \
+      set -e; \
+      OWNER="$(getent passwd "$UID" | cut -d: -f1)"; \
+      if [ -n "$OWNER" ] && [ "$OWNER" != "node" ]; then \
+        echo "APP_UID=$UID is already used by '$OWNER' in this image; pick a different APP_UID" >&2; \
+        exit 1; \
+      fi; \
+      OWNGROUP="$(getent group "$GID" | cut -d: -f1)"; \
+      if [ -n "$OWNGROUP" ] && [ "$OWNGROUP" != "node" ]; then \
+        echo "APP_GID=$GID is already used by '$OWNGROUP' in this image; pick a different APP_GID" >&2; \
+        exit 1; \
+      fi; \
+      deluser node; \
+      delgroup node 2>/dev/null || true; \
+      addgroup -g "$GID" node; \
+      adduser -u "$UID" -G node -h /home/node -s /bin/sh -D node; \
+      chown -R node:node /home/node; \
     fi \
   && mkdir -p /app && chown node:node /app
 
