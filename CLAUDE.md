@@ -28,7 +28,7 @@ bun run dev
 docker compose up -d
 ```
 
-This starts the app alone against a SQLite file on a named volume. Code is volume-mounted so changes hot reload. To develop against Postgres 17 instead:
+This starts the app alone against a SQLite file on a named volume. Code is volume-mounted so changes hot reload. The container runs as the unprivileged `node` user (1000:1000); on a Linux host whose user has a different id, build with `APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build` so it can write to the bind mount. A `data` volume created before the container ran as non-root is root-owned; fix it in place with `docker compose run --rm --user root app chown -R node:node /app/data`, or drop it with `docker compose down -v` and let Compose recreate it owned by `node`. To develop against Postgres 17 instead:
 
 ```bash
 DATABASE_URL=postgres://context_kit:context_kit@postgres:5432/context_kit docker compose --profile postgres up -d
