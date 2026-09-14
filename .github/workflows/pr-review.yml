@@ -55,7 +55,7 @@ jobs:
       pull-requests: write
       packages: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Fetch PR diff + context
         env:
@@ -141,7 +141,7 @@ jobs:
         # MUST run before any step that pulls FLOW_IMAGE (e.g. the spider step below) — a private
         # image pulled anonymously fails, and continue-on-error on that step would hide it, silently
         # degrading the coupling graph to diff-derived edges on every run.
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
