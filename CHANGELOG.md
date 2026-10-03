@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- `@shadcn/lint` for design-system rules on Tailwind classes, running on Oxlint (`.oxlintrc.json`, `bun run lint:ui`). It reads `components.json`, the theme in `app/globals.css`, and the components in `components/ui/`. Oxlint's built-in rule categories are off so it does not duplicate Biome, and no `@shadcn/lint` rules are enabled yet. `lint:ui` runs in `validate` and as its own CI step.
+
 ### Changed
 
 - The Docker dev image runs as the unprivileged `node` user instead of root (CWE-250). `/app` and the `data`, `.next`, and `node_modules` mount points are created in the image owned by `node`, so the Compose volumes come up with the right ownership, and `USER node` is set before `CMD`. `UID`/`GID` build args (mapped from `APP_UID`/`APP_GID` in `docker-compose.yml`) remap the user for Linux hosts whose user is not 1000: `APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build`.

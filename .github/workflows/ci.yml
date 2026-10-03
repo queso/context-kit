@@ -35,6 +35,9 @@ jobs:
       - name: Lint & Format
         run: bun run check
 
+      - name: Design System Lint
+        run: bun run lint:ui
+
       - name: Test
         run: bun test
 

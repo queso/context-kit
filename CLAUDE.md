@@ -6,7 +6,7 @@ This is a foundation, not a SaaS boilerplate. There is no auth, no billing, no e
 
 ## Stack
 
-Next.js 16 with App Router, React 19, TypeScript in strict mode, Tailwind CSS v4, shadcn/ui (New York style, lucide icons), Biome for linting and formatting, `bun test` with React Testing Library for tests, Drizzle ORM with SQLite (`@libsql/client`) by default and PostgreSQL optional, SWR for client-side data fetching, reactiveSWR for real-time SSE, Bun for package management, scripts, and tests; Node 24 for the Next server, Docker Compose for local dev, GitHub Actions for CI.
+Next.js 16 with App Router, React 19, TypeScript in strict mode, Tailwind CSS v4, shadcn/ui (New York style, lucide icons), Biome for linting and formatting, `@shadcn/lint` on Oxlint for design-system rules, `bun test` with React Testing Library for tests, Drizzle ORM with SQLite (`@libsql/client`) by default and PostgreSQL optional, SWR for client-side data fetching, reactiveSWR for real-time SSE, Bun for package management, scripts, and tests; Node 24 for the Next server, Docker Compose for local dev, GitHub Actions for CI.
 
 Bun 1.3 (see `.bun-version`, pinned again as `packageManager` in `package.json`). Install it from https://bun.sh. Node 24+ is also required (`engines.node` in `package.json`; unlike Bun there is no `.node-version` file, so use any version manager): Bun's runtime cannot build or start Next 16 yet, so `bun run dev`, `build`, and `start` hand the Next process to Node transparently.
 
@@ -43,6 +43,7 @@ DATABASE_URL=postgres://context_kit:context_kit@postgres:5432/context_kit docker
 | `start` | Start production server |
 | `lint` | Check linting with Biome |
 | `lint:fix` | Auto-fix lint issues |
+| `lint:ui` | Check design-system rules with `@shadcn/lint` (Oxlint) |
 | `format` | Check formatting with Biome |
 | `format:fix` | Auto-fix formatting |
 | `check` | Run all Biome checks (lint + format) |
@@ -56,7 +57,7 @@ DATABASE_URL=postgres://context_kit:context_kit@postgres:5432/context_kit docker
 | `db:push` | Push schema changes to database (no migration file) |
 | `db:migrate` | Apply pending migrations |
 | `db:studio` | Open Drizzle Studio GUI |
-| `validate` | Run typecheck + check + test (same as CI) |
+| `validate` | Run typecheck + check + lint:ui + test (same as CI) |
 
 Run scripts with `bun run <script>` (`bun test` also works directly). The Next server is deliberately left on Node; `package.json` declares `engines.node >= 24` for it.
 
@@ -64,6 +65,7 @@ Run scripts with `bun run <script>` (`bun test` also works directly). The Next s
 
 - **TypeScript strict mode** is on. Do not weaken it with `any` or `@ts-ignore`.
 - **Biome** handles linting and formatting. Do not add ESLint or Prettier.
+- **`@shadcn/lint`** checks Tailwind and shadcn/ui usage against the design system (theme tokens in `app/globals.css`, components in `components/ui/`). It runs on Oxlint, configured in `.oxlintrc.json`, with Oxlint's built-in rules turned off so it does not overlap Biome. Choose rules in that file's `rules` block; see the [rule list](https://github.com/shadcn-ui/lint#rules). After UI changes, run `bun run lint:ui` and fix all errors.
   - 2-space indentation, double quotes, semicolons only as needed.
   - Line width: 100 characters.
   - Import organization is automatic via Biome assist.
@@ -126,6 +128,7 @@ public/                     Static assets
 .bun-version                Bun version pin (also `packageManager` in package.json)
 bun.lock                    Bun lockfile (committed)
 bunfig.toml                 Bun test runner config (preload)
+.oxlintrc.json              Oxlint config: loads @shadcn/lint for design-system rules
 drizzle.config.ts           drizzle-kit config (dialect from DATABASE_URL)
 instrumentation.ts          Applies pending migrations at server start
 middleware.ts                Next.js middleware (CORS, rate limiting, correlation IDs, request logging)
@@ -482,7 +485,7 @@ Do not add an `npm` ecosystem entry to `dependabot.yml` — Renovate handles all
 
 ## What NOT to Do
 
-- **Do not add ESLint or Prettier.** Biome replaces both.
+- **Do not add ESLint or Prettier.** Biome replaces both. Oxlint is here only to host `@shadcn/lint`; keep its built-in categories off.
 - **Do not create Pages Router files** (no `pages/` directory). This project uses App Router only.
 - **Do not add auth, billing, teams, or SaaS features.** This is a clean foundation.
 - **Do not create a second Drizzle instance.** Import `db` from `@/db`.
