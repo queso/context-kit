@@ -4,7 +4,7 @@
 #
 # BUN_VERSION must match .bun-version and "packageManager" in package.json. Renovate ignores Bun
 # on purpose (see renovate.json), so all three pins move together by hand when Bun is bumped.
-ARG BUN_VERSION=1.3.11
+ARG BUN_VERSION=1.3.14
 FROM oven/bun:${BUN_VERSION}-alpine AS bun
 
 FROM node:24-alpine
