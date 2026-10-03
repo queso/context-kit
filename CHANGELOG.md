@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- `@shadcn/lint` for design-system rules on Tailwind classes, running on Oxlint (`.oxlintrc.json`, `bun run lint:ui`). It reads `components.json`, the theme in `app/globals.css`, and the components in `components/ui/`. Oxlint's built-in rule categories are off so it does not duplicate Biome, and no `@shadcn/lint` rules are enabled yet. `lint:ui` runs in `validate` and as its own CI step.
+- `@shadcn/lint` for design-system rules on Tailwind classes, running on Oxlint (`.oxlintrc.json`, `bun run lint:ui`). It reads `components.json`, the theme in `app/globals.css`, and the components in `components/ui/`. Oxlint's built-in rule categories are off so it does not duplicate Biome. All six `@shadcn/lint` rules are on as errors, with `no-arbitrary-values` off for the generated `components/ui/**`. `lint:ui` runs in `validate` and as its own CI step.
+- The starter pages (`app/page.tsx`, `error.tsx`, `not-found.tsx`, `loading.tsx`) use theme tokens (`bg-muted`, `bg-background`, `text-foreground`, `text-muted-foreground`, `border-border`) instead of `zinc-*` palette classes and hex values, so they follow the `.dark` theme. The home page links render through `Button` (`size="lg"`, default and `outline` variants) instead of hand-styled anchors.
 
 ### Changed
 

@@ -65,7 +65,7 @@ Run scripts with `bun run <script>` (`bun test` also works directly). The Next s
 
 - **TypeScript strict mode** is on. Do not weaken it with `any` or `@ts-ignore`.
 - **Biome** handles linting and formatting. Do not add ESLint or Prettier.
-- **`@shadcn/lint`** checks Tailwind and shadcn/ui usage against the design system (theme tokens in `app/globals.css`, components in `components/ui/`). It runs on Oxlint, configured in `.oxlintrc.json`, with Oxlint's built-in rules turned off so it does not overlap Biome. Choose rules in that file's `rules` block; see the [rule list](https://github.com/shadcn-ui/lint#rules). After UI changes, run `bun run lint:ui` and fix all errors.
+- **`@shadcn/lint`** checks Tailwind and shadcn/ui usage against the design system (theme tokens in `app/globals.css`, components in `components/ui/`). It runs on Oxlint, configured in `.oxlintrc.json`, with Oxlint's built-in rules turned off so it does not overlap Biome. All six rules are on (`no-restyle`, `no-raw-colors`, `no-arbitrary-values`, `no-inline-styles`, `no-unknown-classes`, `require-static-classes`); `no-arbitrary-values` is off for `components/ui/**` because shadcn generates those files. Use theme tokens (`bg-background`, `text-muted-foreground`, `border-border`) instead of palette colors, and use component variants instead of restyling them with `className`. See the [rule list](https://github.com/shadcn-ui/lint#rules). After UI changes, run `bun run lint:ui` and fix all errors.
   - 2-space indentation, double quotes, semicolons only as needed.
   - Line width: 100 characters.
   - Import organization is automatic via Biome assist.
