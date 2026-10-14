@@ -50,7 +50,7 @@ Open [http://localhost:3000](http://localhost:3000). You're up. Three commands, 
 | Layer | Choice | Why |
 |-------|--------|-----|
 | Framework | **Next.js 16** (App Router) | The default choice for production React. App Router is the future, no reason to start with Pages. |
-| Toolchain | **Bun** + Node 24 | Bun is package manager, script runner, and test runner in one binary, pinned in `.bun-version`. Node 24 runs the Next server until Bun's runtime can ([oven-sh/bun#25609](https://github.com/oven-sh/bun/issues/25609)). |
+| Toolchain | **Bun** + Node 24 | Bun is package manager, script runner, and test runner in one binary, pinned in `.bun-version`. Node 24 runs the Next server by choice: Bun 1.4 can run Next 16, but moving to it is a separate change. |
 | Language | **TypeScript** (strict mode) | Strict mode catches real bugs. If you're going to use TypeScript, actually use it. |
 | UI | **React 19** | Server Components, Actions, and the new hooks are too useful to leave on the table. |
 | Styling | **Tailwind CSS v4** | Fastest way to style components without context-switching to CSS files. v4 is leaner and faster. |

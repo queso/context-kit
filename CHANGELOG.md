@@ -13,9 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- Bun 1.4.3 replaces 1.3.14 as package manager, script runner, and test runner (`.bun-version`, `packageManager`, the Dockerfile `BUN_VERSION`, and `@types/bun` ~1.4.3). The lockfile format is unchanged and the Next server still runs on Node 24.
+- Bun 1.4.3 replaces 1.3.14 as package manager, script runner, and test runner (`.bun-version`, `packageManager`, the Dockerfile `BUN_VERSION`, and `@types/bun` ~1.4.3). The lockfile format is unchanged and the Next server still runs on Node 24. oven-sh/bun#39876 (React Testing Library tests hanging on 1.4) is still open upstream but is reported under vitest; it does not reproduce under this repo's `bun test` on 1.4.3, which passes the full suite locally on repeated runs and in CI.
 - The Docker dev image runs as the unprivileged `node` user instead of root (CWE-250). `/app` and the `data`, `.next`, and `node_modules` mount points are created in the image owned by `node`, so the Compose volumes come up with the right ownership, and `USER node` is set before `CMD`. `UID`/`GID` build args (mapped from `APP_UID`/`APP_GID` in `docker-compose.yml`) remap the user for Linux hosts whose user is not 1000: `APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build`.
-- Dependency refresh: Next 16.3.8, TypeScript 7 (the native compiler; `tsc --noEmit` and the type check in `next build` both run on it), Bun 1.3.14 (`.bun-version`, `packageManager`, and the Dockerfile `BUN_VERSION`), Biome 2.5.15, happy-dom 20.14.5, `@types/node` 24.19, plus minor and patch bumps to drizzle-orm, drizzle-kit, lucide-react, pino, tailwind-merge, zod, and shadcn. Bun stays on 1.3.x because 1.4 hangs React Testing Library tests (oven-sh/bun#39876); `@types/node` stays on 24 to match `engines.node`.
+- Dependency refresh: Next 16.3.8, TypeScript 7 (the native compiler; `tsc --noEmit` and the type check in `next build` both run on it), Biome 2.5.15, happy-dom 20.14.5, `@types/node` 24.19, plus minor and patch bumps to drizzle-orm, drizzle-kit, lucide-react, pino, tailwind-merge, zod, and shadcn. `@types/node` stays on 24 to match `engines.node`.
 
 ## [0.2.0] - 2026-09-10
 
