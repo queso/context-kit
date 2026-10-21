@@ -48,7 +48,12 @@ jobs:
     # Fork PRs are skipped: this repo is public and GitHub withholds secrets from
     # fork-originated pull_request runs, so FIREWORKS_AI_API_KEY would arrive empty and
     # the job would fail instead of reviewing anything.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    #
+    # Bot PRs are skipped too: Renovate and Dependabot diffs are almost all lockfile, the flow's
+    # plan station crashes on them, and the failed check blocks Renovate's automerge.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-latest
     permissions:
       contents: read

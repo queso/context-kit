@@ -5,6 +5,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Weekly run so a new advisory against a production dependency fails CI even in a quiet week.
+  schedule:
+    - cron: "0 12 * * 1"
 
 jobs:
   validate:
@@ -28,6 +31,9 @@ jobs:
           bun-version-file: .bun-version
 
       - run: bun install --frozen-lockfile
+
+      - name: Audit Production Dependencies
+        run: bun run audit
 
       - name: Type Check
         run: bun run typecheck

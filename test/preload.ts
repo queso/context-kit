@@ -29,6 +29,12 @@ const natives = {
   URLSearchParams,
   AbortController,
   AbortSignal,
+  // happy-dom's timers are invisible to bun:test fake timers: a cleared happy-dom timeout still
+  // counts in jest.getTimerCount(), so timer-cleanup assertions fail depending on test order.
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
 }
 
 GlobalRegistrator.register()

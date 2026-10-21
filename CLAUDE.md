@@ -57,7 +57,8 @@ DATABASE_URL=postgres://context_kit:context_kit@postgres:5432/context_kit docker
 | `db:push` | Push schema changes to database (no migration file) |
 | `db:migrate` | Apply pending migrations |
 | `db:studio` | Open Drizzle Studio GUI |
-| `validate` | Run typecheck + check + lint:ui + test (same as CI) |
+| `audit` | Fail on high or critical advisories in production dependencies (`bun audit --prod`) |
+| `validate` | Run typecheck + check + lint:ui + test (CI also runs `audit` and `build`) |
 
 Run scripts with `bun run <script>` (`bun test` also works directly). The Next server is deliberately left on Node; `package.json` declares `engines.node >= 24` for it.
 
@@ -477,7 +478,14 @@ Validated at runtime by `lib/env.ts` using Zod. Access via `getEnv()` from `@/li
 Automated dependency updates use two tools:
 
 - **Dependabot** (`.github/dependabot.yml`): GitHub Actions versions only. Weekly, grouped.
-- **Renovate** (`renovate.json`): npm packages via the `bun` manager. Minor/patch auto-merge when CI passes. Major versions get individual PRs for review.
+- **Renovate** (`renovate.json`): npm packages via the `bun` manager. Minor/patch auto-merge when CI passes. Major versions get individual PRs for review. Security fixes (from the OSV database) open immediately, outside the weekday schedule, labelled `security`. Lockfile maintenance runs every Monday and is what picks up fixed transitive dependencies.
+
+Security checks:
+
+- CI runs `bun run audit` on every PR, on every push to `main`, and weekly on Monday, so a new advisory against a production dependency fails CI even when nothing else changed.
+- The audit covers production dependencies only. Dev-only tools (`flowspec`'s browser stack, `drizzle-kit`'s bundled esbuild) carry advisories with no fixed release yet; check them with a plain `bun audit` when updating those tools.
+- To fix what the audit reports, run `bun audit fix`. It updates the lockfile within declared ranges. Use `bun audit fix --dry-run` to preview the change.
+- The Nitpick review job skips bot PRs. Its plan station crashes on lockfile-only diffs, and the failed check would block Renovate's automerge.
 
 Drizzle (`drizzle-orm` + `drizzle-kit`), React, and testing packages are grouped (they must update together). The Bun version is managed manually via `.bun-version` and `packageManager` in `package.json`.
 
